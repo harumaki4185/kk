@@ -122,7 +122,7 @@ class KakeiboApp:
 
         self.root.title(APP_TITLE)
         self.root.geometry("1450x920")
-        self.root.minsize(1240, 820)
+        self.root.minsize(1120, 760)
         self.root.configure(bg=BG_MAIN, padx=20, pady=20)
         self._set_default_window_state()
 
@@ -184,8 +184,8 @@ class KakeiboApp:
         style.configure("TCombobox", padding=6)
 
     def _build_layout(self) -> None:
-        self.root.columnconfigure(0, weight=3, minsize=760)
-        self.root.columnconfigure(1, weight=2, minsize=520)
+        self.root.columnconfigure(0, weight=3, minsize=680)
+        self.root.columnconfigure(1, weight=2, minsize=420)
         self.root.rowconfigure(0, weight=1)
 
         self._build_left_panel()
@@ -230,7 +230,7 @@ class KakeiboApp:
         self.list_view_btn.grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
         self.left_content = tk.Frame(left_panel, bg=BG_MAIN)
-        self.left_content.grid(row=1, column=0, sticky="nsew")
+        self.left_content.grid(row=1, column=0, sticky="nsew", padx=4, pady=4)
         self.left_content.rowconfigure(0, weight=1)
         self.left_content.columnconfigure(0, weight=1)
 
@@ -246,7 +246,7 @@ class KakeiboApp:
             padx=14,
             pady=10,
         )
-        frame.grid(row=0, column=0, sticky="nsew")
+        frame.grid(row=0, column=0, sticky="nsew", padx=4, pady=4)
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(2, weight=1)
         self.calendar_page = frame
@@ -357,7 +357,7 @@ class KakeiboApp:
             padx=14,
             pady=10,
         )
-        frame.grid(row=0, column=0, sticky="nsew")
+        frame.grid(row=0, column=0, sticky="nsew", padx=4, pady=4)
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(1, weight=1)
         self.list_page = frame
@@ -403,12 +403,18 @@ class KakeiboApp:
         self.tree.heading("amount", text="金額")
         self.tree.heading("memo", text="メモ")
 
-        self.tree.column("date", width=140, anchor="center")
-        self.tree.column("type", width=100, anchor="center")
-        self.tree.column("category", width=110, anchor="center")
-        self.tree.column("content_category", width=140, anchor="w")
-        self.tree.column("amount", width=140, anchor="e")
-        self.tree.column("memo", width=420, anchor="w")
+        self.tree.column("date", width=120, minwidth=110, stretch=False, anchor="center")
+        self.tree.column("type", width=88, minwidth=80, stretch=False, anchor="center")
+        self.tree.column("category", width=100, minwidth=90, stretch=False, anchor="center")
+        self.tree.column(
+            "content_category",
+            width=130,
+            minwidth=110,
+            stretch=False,
+            anchor="w",
+        )
+        self.tree.column("amount", width=120, minwidth=100, stretch=False, anchor="e")
+        self.tree.column("memo", width=260, minwidth=180, stretch=True, anchor="w")
 
         self.tree.tag_configure("income", background=COLOR_INCOME_BG, foreground=COLOR_INCOME)
         self.tree.tag_configure("expense", background=COLOR_EXPENSE_BG, foreground=COLOR_EXPENSE)
@@ -435,7 +441,7 @@ class KakeiboApp:
 
     def _build_right_panel(self) -> None:
         right_panel = tk.Frame(self.root, bg=BG_MAIN)
-        right_panel.grid(row=0, column=1, sticky="nsew")
+        right_panel.grid(row=0, column=1, sticky="nsew", padx=(4, 0), pady=4)
         right_panel.columnconfigure(0, weight=1)
         right_panel.rowconfigure(0, weight=3)
         right_panel.rowconfigure(1, weight=2)
