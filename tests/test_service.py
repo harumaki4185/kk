@@ -92,6 +92,24 @@ class KakeiboServiceTest(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertTrue(all(row["date"].startswith("2026-03") for row in rows))
 
+    def test_list_entries_with_both_filters(self) -> None:
+        self.service.create_entry("2026-03-01", "expense", "食費", "1000", "")
+        self.service.create_entry("2026-03-22", "income", "その他", "5000", "")
+        self.service.create_entry("2026-04-01", "expense", "日用品", "800", "")
+
+        rows_match = self.service.list_entries(
+            date_filter="2026-03-01",
+            year_month_filter="2026-03",
+        )
+        self.assertEqual(len(rows_match), 1)
+        self.assertEqual(rows_match[0]["date"], "2026-03-01")
+
+        rows_mismatch = self.service.list_entries(
+            date_filter="2026-03-01",
+            year_month_filter="2026-04",
+        )
+        self.assertEqual(rows_mismatch, [])
+
     def test_daily_totals(self) -> None:
         self.service.create_entry("2026-03-01", "income", "その他", "5000", "")
         self.service.create_entry("2026-03-01", "expense", "食費", "1500", "")

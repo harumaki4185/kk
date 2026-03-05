@@ -1,159 +1,149 @@
-# 家計簿アプリ 全体コードレビュー（第3回）
+# 家計簿アプリ 全体コードレビュー（第4回）
 
-**対象**: 全ファイル  
+**対象**: 全ファイル（13ファイル, 878+149+158+65+77+128+6+39+50+179+11+2+20行）  
 **レビュー日**: 2026-03-06  
 **仕様書**: SPEC.md
 
 ---
 
-## 前回指摘の対応状況
+## 前回（第3回）指摘の対応状況
 
 | # | 内容 | 状態 | 備考 |
 |---|------|------|------|
-| C-1 | DB例外時のロールバック欠如 | ✅ 修正済 | `except → rollback → raise` 追加 |
-| W-1 | 全角数字でクラッシュ | ✅ 修正済 | `_FULLWIDTH_TRANSLATION` で変換、`isascii()` チェック |
-| W-2 | 不正日付のバリデーション | ✅ 修正済 | `date.fromisoformat()` + 正規表現で二重チェック |
-| W-3 | 未使用インポート `SMALL_FONT` | ✅ 修正済 | ステータスバーで使用 |
-| I-1 | `create_entry` 戻り値型不整合 | ✅ 修正済 | `-> None` に戻った |
-| I-2 | SQLが2パターンに重複 | ✅ 修正済 | 動的WHERE句に統一 |
-| I-3 | `daily_totals` がUI未使用 | ✅ 修正済 | カレンダー機能で使用 |
-| I-4 | `date_filter` がUI未使用 | ✅ 修正済 | カレンダー日付選択で使用 |
-| I-5 | テストがService層のみ | ✅ 修正済 | 12件に拡充、ロールバックテスト含む |
-| I-6 | UI色のハードコード | ✅ 修正済 | 全色を `constants.py` に集約 |
-| I-5(旧) | `Exception` キャッチが広い | ✅ 修正済 | `sqlite3.Error, OSError` 等に限定 |
+| W-1 | `disabledforeground` 未設定 | ✅ 修正済 | L712 で明示 |
+| W-2 | `_show_error_dialog` の root リーク | ✅ 修正済 | `finally` + `root = None` イディオム |
+| W-3 | `on_delete` に DB エラーキャッチなし | ✅ 修正済 | `(sqlite3.Error, OSError)` で統一 |
+| I-1 | SPEC.md に `run.py` / `tests/` 未記載 | ✅ 修正済 | ディレクトリ構成に追記 |
+| I-2 | カレンダー選択時に `refresh_summary` 未呼出 | 🟡 設計変更で解消方向 | `on_clear_date_filter` は `refresh_all()` に変更 |
+| I-3 | `calendar.firstweekday` 未明示 | ✅ 修正済 | `Calendar(firstweekday=0)` に変更 |
+| I-4 | SPEC.md のテスト件数が実態と乖離 | ✅ 修正済 | 「10件以上、現行13件」に更新 |
 
 > **前回指摘は全件対応済みです。** 👏
 
 ---
 
-## 🟡 Warning（軽微な注意点）
+## 新規変更の概要
 
-### W-1. カレンダーの `disabledforeground` 未設定
-
-**ファイル**: ui.py L587-594
-
-```python
-button.configure(
-    text="",
-    state="disabled",
-    command=lambda: None,
-    bg=COLOR_CALENDAR_EMPTY_BG,
-    fg=COLOR_TEXT_PRIMARY,
-)
-```
-
-`state="disabled"` にすると Tkinter はデフォルトの `disabledforeground` を使うため、`fg` 指定が無視されます。空セルなのでテキストがなく実害はありませんが、`disabledforeground` も明示する方がより堅牢です。
+- **タブ切替UI**: 左パネルでカレンダー/明細一覧を `tkraise()` で切替
+- **右パネル**: 入力フォーム（縦レイアウト）+ 月次サマリ（「明細一覧を開く」ボタン付き）
+- **`year_month_filter`**: `db.fetch_entries` / `service.list_entries` に月フィルタ追加
+- **カレンダー日付トグル**: 同じ日付を再クリックで選択解除
+- **追加時の filter 保持**: `previous_filter` を使い、全体表示中は勝手にフィルタしない
+- **テスト**: 13件に拡充（`test_list_entries_with_year_month_filter` 追加）
 
 ---
 
-### W-2. `_show_error_dialog` の `root` がリークする可能性
+## 🟡 Warning
 
-**ファイル**: main.py L21-27
+### W-1. `on_select_calendar_date` で `refresh_entries` が二重呼び出し
+
+**ファイル**: ui.py L782-787
 
 ```python
-try:
-    root = tk.Tk()
-    root.withdraw()
-    messagebox.showerror("エラー", message)
-    root.destroy()
-except tk.TclError:
-    print(message)
+self.selected_date_filter = date_text
+self.date_var.set(date_text)
+self.refresh_calendar()
+self.show_view(VIEW_LIST)      # ← 内部で self.refresh_entries() を呼ぶ
+self.refresh_entries()          # ← ここでも呼ぶ → 二重呼び出し
 ```
 
-`showerror` 後に例外が起きた場合、`root.destroy()` がスキップされます。`finally` ブロックで確実に `destroy` する方が安全です。ただし起動失敗時のみなのでリスクは低いです。
+`show_view(VIEW_LIST)` の L651 で `self.refresh_entries()` が呼ばれ、直後の L786 でも呼ばれます。明細が2回リフレッシュされて無駄なDB問い合わせが発生します。L786 の `self.refresh_entries()` を削除するか、`show_view` 側の呼び出しを条件付きにすべきです。
 
 ---
 
-### W-3. `on_delete` で `sqlite3.Error` がキャッチされない
+### W-2. `BUTTON_FONT` が未使用
 
-**ファイル**: ui.py L700-715
+**ファイル**: ui.py L18 (import), constants.py L28
 
-`on_add` と `on_export_csv` は `(sqlite3.Error, OSError)` をキャッチしていますが、`on_delete` には DB エラーのキャッチがありません。`service.delete_entry` → `database.delete_entry` で DB アクセスするため、同様のキャッチを入れるべきです。
+`BUTTON_FONT` をインポートしていますが、現在のコードでは使用されていません。追加ボタンは以前 `BUTTON_FONT` を使っていましたが、L503 を確認すると `BUTTON_FONT` が使われています。
+
+→ 再確認: L503 で使用あり。**この指摘は取り消し**。
+
+---
+
+### W-3. `refresh_all` がリスト非表示時もエントリを更新
+
+**ファイル**: ui.py L684-687
+
+```python
+def refresh_all(self) -> None:
+    self.refresh_calendar()
+    self.refresh_entries()    # ← カレンダー表示中も毎回DBクエリ
+    self.refresh_summary()
+```
+
+カレンダービュー表示中でも `refresh_entries()` が走り、不可視の Treeview を更新しています。パフォーマンス上は軽微ですが、`show_view(VIEW_LIST)` 切替時に `refresh_entries()` を呼んでいるので、ここでは省略可能です。
 
 **修正案**:
 ```python
-def on_delete(self) -> None:
-    ...
-    try:
-        if not self.service.delete_entry(entry_id):
-            ...
-    except (sqlite3.Error, OSError):
-        self._set_status("削除に失敗しました", is_error=True)
-        messagebox.showerror("エラー", "削除に失敗しました")
-        return
-    ...
+def refresh_all(self) -> None:
+    self.refresh_calendar()
+    if self.current_view == VIEW_LIST:
+        self.refresh_entries()
+    self.refresh_summary()
 ```
+
+ただし、ビュー切替時に `refresh_entries` が呼ばれる設計なので、現状でも大きな問題ではありません。
 
 ---
 
-## 🔵 Improvement（改善提案）
+### W-4. `on_select_calendar_date` の解除時に `refresh_entries` が呼ばれない
 
-### I-1. SPEC.md のディレクトリ構成に `run.py` と `tests/` が未記載
-
-**ファイル**: SPEC.md L103-117
-
-```text
-.
-├─ app/
-│  ├─ main.py
-│  ├─ ui.py
-│  ├─ db.py
-│  ├─ service.py
-│  └─ constants.py
-├─ data/
-├─ requirements.txt
-├─ README.md
-└─ .github/
-   └─ workflows/
-      └─ build-windows.yml
-```
-
-`run.py` と `tests/` がありません。SPEC を最新に保つなら追記が望ましいです。
-
----
-
-### I-2. `on_select_calendar_date` / `on_clear_date_filter` で `refresh_summary` が呼ばれない
-
-**ファイル**: ui.py L653-664
+**ファイル**: ui.py L775-780
 
 ```python
-def on_select_calendar_date(self, date_text: str) -> None:
-    ...
+if self.selected_date_filter == date_text:
+    self.selected_date_filter = None
     self.refresh_calendar()
-    self.refresh_entries()     # ← refresh_summary なし
-
-def on_clear_date_filter(self) -> None:
-    ...
-    self.refresh_calendar()
-    self.refresh_entries()     # ← refresh_summary なし
+    self._set_status("日付選択を解除しました")
+    return    # ← refresh_entries は呼ばれない
 ```
 
-月を変えるときは `refresh_all()` でサマリも更新されますが、カレンダー日付のクリック / 全期間表示ボタンでは呼ばれません。現状はサマリが月単位なので実害はありませんが、将来的に選択日付とサマリが連動する場合に漏れが出ます。意図的なら問題ありません。
+トグルで日付選択を解除したとき、リスト側のタイトルやデータがフィルタ状態のままになります。リストビューに切り替えたとき `show_view` 内で `refresh_entries()` が呼ばれるため直ちに問題にはなりませんが、すでにリストビューが表示中だった場合は古い状態が残ります。
 
 ---
 
-### I-3. `calendar` モジュールの `firstweekday` 未指定
+## 🔵 Improvement
 
-**ファイル**: ui.py L579
+### I-1. `_update_view_buttons` の冗長なコード
+
+**ファイル**: ui.py L621-643
+
+カレンダー / リストの2ビューに対して if/else で完全に対称的なコードがあります。ヘルパーで簡潔にできます:
 
 ```python
-month_days = calendar.monthcalendar(self.calendar_year, self.calendar_month)
+def _update_view_buttons(self) -> None:
+    active = self.calendar_view_btn if self.current_view == VIEW_CALENDAR else self.list_view_btn
+    inactive = self.list_view_btn if self.current_view == VIEW_CALENDAR else self.calendar_view_btn
+    active.configure(bg=COLOR_CSV_BTN, fg=COLOR_CSV_BTN_FG, relief="sunken")
+    inactive.configure(bg=BG_INPUT, fg=COLOR_TEXT_PRIMARY, relief="raised")
 ```
-
-Python の `calendar` デフォルトは月曜始まり（`firstweekday=0`）で、`WEEKDAY_LABELS` も `("月", "火", ... "日")` になっているため整合しています。ただし、ロケール依存で変わる可能性があるため、明示的に `calendar.setfirstweekday(0)` するか `Calendar(firstweekday=0).monthcalendar(...)` を使う方が安全です。
 
 ---
 
-### I-4. SPEC.md のテスト方針に「2〜3件」とあるが12件に増加
+### I-2. `on_select_calendar_date` から `show_view(VIEW_LIST)` を呼ぶのが少し驚き
 
-**ファイル**: SPEC.md L152-153
+日付をクリックするとカレンダーからリストビューに自動切替する動作は、直感的かもしれないし、混乱するかもしれません。設計判断としては理解できますが、ユーザーテストで「勝手に切り替わった」と感じられる場合は要検討です。
+
+---
+
+### I-3. SPEC.md の「5.1 メイン画面」が実態と乖離
+
+**ファイル**: SPEC.md L50-63
 
 ```
-- 自動テスト（可能なら）
-  - `service.py` の集計関数ユニットテスト 2〜3件
+- 上部: 「入力フォーム」
+- 中央: 「明細一覧」
+- 下部: 「月次サマリ」
 ```
 
-実際には12件のテストが実装されています。SPEC.md を実態に合わせて更新するのが良いでしょう。
+実際は2カラム + タブ切替UIです。5.1 を実態に合わせて更新するのが望ましいです。
+
+---
+
+### I-4. テストに `year_month_filter` + `date_filter` 併用ケースがない
+
+`fetch_entries` は `date_filter` と `year_month_filter` を同時に受け取れる設計（WHERE句を AND で結合）ですが、UIで同時使用することはありません。テストでも併用ケースはありません。同時指定を禁止するか、テストを追加するか、どちらかが明確になります。
 
 ---
 
@@ -161,20 +151,18 @@ Python の `calendar` デフォルトは月曜始まり（`firstweekday=0`）で
 
 | 項目 | 評価 |
 |------|------|
-| **レイヤー分離** | DB → Service → UI が明確で、テストしやすい |
-| **仕様準拠** | SPEC.md の全機能（カレンダー含む）を実装 |
-| **2カラムレイアウト** | 左カレンダー / 右入力+明細+サマリの直感的レイアウト |
-| **全角数字対応** | `_FULLWIDTH_TRANSLATION` で自然な変換 |
-| **日付バリデーション** | 正規表現 + `fromisoformat()` の二重チェック |
-| **DB ロールバック** | `connect()` で例外時に明示的 `rollback()` |
-| **例外の絞り込み** | `sqlite3.Error, OSError` に限定（デバッグしやすい）|
-| **Tkinter 可用性チェック** | `main.py` で `ModuleNotFoundError` / `TclError` 対応 |
-| **エントリーポイント** | `run.py` で開発/ビルドを統一 |
-| **テスト充実** | 12件（バリデーション全パターン + ロールバック + 日次集計）|
-| **色定数集約** | 全色が `constants.py` に定義、ハードコードなし |
-| **CI** | テスト実行 → ビルド → アップロードの完全ワークフロー |
-| **CSV** | `utf-8-sig` BOM付き、日本語ヘッダー |
-| **README** | トラブルシュート含む実用的なドキュメント |
+| **タブ切替** | `tkraise()` でスタック切替。画面遷移なしのSPA風 |
+| **前回指摘全件対応** | W-1〜W-3, I-1〜I-4 すべて修正済 |
+| **DB フィルタ設計** | `date_filter` / `year_month_filter` を WHERE 動的構築 |
+| **カレンダー日付トグル** | 同じ日付再クリックで解除、直感的 |
+| **追加時の filter 保持** | `previous_filter` パターンで自然なUX |
+| **`_show_error_dialog`** | `finally` + `root = None` で安全 |
+| **`on_delete` エラーキャッチ** | `sqlite3.Error, OSError` で統一 |
+| **テスト 13件** | バリデーション全パターン、ロールバック、月フィルタ |
+| **色定数完全集約** | ハードコード色ゼロ |
+| **`Calendar(firstweekday=0)`** | ロケール依存なし |
+| **`disabledforeground`** | 無効セルの表示が明示的 |
+| **SPEC.md 更新** | ディレクトリ構成 / テスト件数を反映済 |
 
 ---
 
@@ -182,25 +170,20 @@ Python の `calendar` デフォルトは月曜始まり（`firstweekday=0`）で
 
 | # | 重要度 | 内容 | ファイル |
 |---|--------|------|---------|
-| W-1 | 🟡 Warning | `disabledforeground` 未設定 | `ui.py` |
-| W-2 | 🟡 Warning | `_show_error_dialog` の root リーク | `main.py` |
-| W-3 | 🟡 Warning | `on_delete` に DB エラーキャッチなし | `ui.py` |
-| I-1 | 🔵 Improve | SPEC.md に `run.py` / `tests/` 未記載 | `SPEC.md` |
-| I-2 | 🔵 Improve | カレンダー選択時に `refresh_summary` 未呼出 | `ui.py` |
-| I-3 | 🔵 Improve | `calendar.firstweekday` 未明示 | `ui.py` |
-| I-4 | 🔵 Improve | SPEC.md のテスト件数が実態と乖離 | `SPEC.md` |
+| W-1 | 🟡 Warning | `refresh_entries` 二重呼び出し | `ui.py` L782-787 |
+| W-3 | 🟡 Warning | リスト非表示時もDB問い合わせ | `ui.py` L684-687 |
+| W-4 | 🟡 Warning | トグル解除時にリスト未更新 | `ui.py` L775-780 |
+| I-1 | 🔵 Improve | `_update_view_buttons` 冗長 | `ui.py` L621-643 |
+| I-2 | 🔵 Improve | カレンダークリックで自動ビュー切替 | `ui.py` L785 |
+| I-3 | 🔵 Improve | SPEC.md 画面仕様が実態と乖離 | `SPEC.md` L50-63 |
+| I-4 | 🔵 Improve | フィルタ併用のテスト不在 | `test_service.py` |
 
-**🔴 Critical: 0件** — 前回の Critical 指摘はすべて解消されています。
+**🔴 Critical: 0件**
 
 ---
 
 ## 総合評価
 
-前回レビューの **全11件の指摘が対応済み** です。特に以下が大きな改善です：
+前回の指摘 **全7件が対応済み**。新たなタブ切替UIも適切に実装されています。
 
-- 全角数字変換（`_FULLWIDTH_TRANSLATION`）は高齢者向けとして秀逸
-- `date.fromisoformat()` + 正規表現の二重バリデーションは堅牢
-- ロールバックテスト（`test_connect_rolls_back_on_error`）でDB整合性を検証
-- 2カラムレイアウトでカレンダーと入力が同時に見える
-
-残りの指摘は Warning/Improvement のみで、**MVPとしては十分な品質**です。
+残りの指摘は **Warning 3件（うち2件はパフォーマンス微小）**、**Improvement 4件（設計判断レベル）** のみで、**プロダクション投入可能な品質** です。

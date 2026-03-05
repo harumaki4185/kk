@@ -320,6 +320,15 @@ class KakeiboApp:
                 button.grid(row=row, column=col, padx=2, pady=2, sticky="nsew")
                 self.calendar_buttons.append(button)
 
+        tk.Label(
+            frame,
+            text="※ 日付をクリックすると明細一覧に切り替わります",
+            font=SMALL_FONT,
+            bg=BG_FRAME,
+            fg=COLOR_TEXT_PRIMARY,
+            anchor="w",
+        ).grid(row=3, column=0, sticky="w", pady=(8, 0))
+
     def _build_list_page(self) -> None:
         frame = tk.LabelFrame(
             self.left_content,
@@ -619,28 +628,10 @@ class KakeiboApp:
         return f"{self.calendar_year:04d}-{self.calendar_month:02d}"
 
     def _update_view_buttons(self) -> None:
-        if self.current_view == VIEW_CALENDAR:
-            self.calendar_view_btn.configure(
-                bg=COLOR_CSV_BTN,
-                fg=COLOR_CSV_BTN_FG,
-                relief="sunken",
-            )
-            self.list_view_btn.configure(
-                bg=BG_INPUT,
-                fg=COLOR_TEXT_PRIMARY,
-                relief="raised",
-            )
-        else:
-            self.calendar_view_btn.configure(
-                bg=BG_INPUT,
-                fg=COLOR_TEXT_PRIMARY,
-                relief="raised",
-            )
-            self.list_view_btn.configure(
-                bg=COLOR_CSV_BTN,
-                fg=COLOR_CSV_BTN_FG,
-                relief="sunken",
-            )
+        active = self.calendar_view_btn if self.current_view == VIEW_CALENDAR else self.list_view_btn
+        inactive = self.list_view_btn if self.current_view == VIEW_CALENDAR else self.calendar_view_btn
+        active.configure(bg=COLOR_CSV_BTN, fg=COLOR_CSV_BTN_FG, relief="sunken")
+        inactive.configure(bg=BG_INPUT, fg=COLOR_TEXT_PRIMARY, relief="raised")
 
     def show_view(self, view_name: str) -> None:
         self.current_view = view_name
@@ -683,7 +674,8 @@ class KakeiboApp:
 
     def refresh_all(self) -> None:
         self.refresh_calendar()
-        self.refresh_entries()
+        if self.current_view == VIEW_LIST:
+            self.refresh_entries()
         self.refresh_summary()
 
     def refresh_calendar(self) -> None:
@@ -776,6 +768,8 @@ class KakeiboApp:
         if self.selected_date_filter == date_text:
             self.selected_date_filter = None
             self.refresh_calendar()
+            if self.current_view == VIEW_LIST:
+                self.refresh_entries()
             self._set_status("日付選択を解除しました")
             return
 
@@ -783,7 +777,6 @@ class KakeiboApp:
         self.date_var.set(date_text)
         self.refresh_calendar()
         self.show_view(VIEW_LIST)
-        self.refresh_entries()
         self._set_status(f"{date_text} の明細を表示しています")
 
     def on_clear_date_filter(self) -> None:
