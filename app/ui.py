@@ -386,7 +386,7 @@ class KakeiboApp:
             command=self.on_clear_date_filter,
         ).grid(row=0, column=1, sticky="e")
 
-        columns = ("date", "type", "category", "content_category", "amount", "memo")
+        columns = ("date", "type", "content_category", "category", "amount", "memo")
         self.tree = ttk.Treeview(
             frame,
             columns=columns,
@@ -398,15 +398,15 @@ class KakeiboApp:
 
         self.tree.heading("date", text="日付")
         self.tree.heading("type", text="区分")
+        self.tree.heading("content_category", text="内容")
         self.tree.heading("category", text="カテゴリ")
-        self.tree.heading("content_category", text="内容カテゴリ")
         self.tree.heading("amount", text="金額")
         self.tree.heading("memo", text="メモ")
 
         self.tree.column("date", width=140, anchor="center")
         self.tree.column("type", width=100, anchor="center")
-        self.tree.column("category", width=110, anchor="center")
         self.tree.column("content_category", width=140, anchor="w")
+        self.tree.column("category", width=110, anchor="center")
         self.tree.column("amount", width=140, anchor="e")
         self.tree.column("memo", width=420, anchor="w")
 
@@ -490,7 +490,7 @@ class KakeiboApp:
                 indicatoron=True,
             ).pack(side="left", padx=(0, 16))
 
-        tk.Label(frame, text="内容カテゴリ", font=BASE_FONT, bg=BG_FRAME).grid(
+        tk.Label(frame, text="内容", font=BASE_FONT, bg=BG_FRAME).grid(
             row=2, column=0, sticky="w", padx=(0, 8), pady=6
         )
         tk.Entry(
@@ -832,8 +832,8 @@ class KakeiboApp:
                 values=(
                     row["date"],
                     label,
-                    row["category"],
                     row.get("content_category", ""),
+                    row["category"],
                     amount_text,
                     row["memo"],
                 ),

@@ -78,7 +78,7 @@ def validate_memo(memo: str) -> str:
 def validate_content_category(content_category: str) -> str:
     text = content_category.strip()
     if len(text) > MAX_CONTENT_CATEGORY_LENGTH:
-        raise ValueError(f"内容カテゴリは {MAX_CONTENT_CATEGORY_LENGTH} 文字以内で入力してください")
+        raise ValueError(f"内容は {MAX_CONTENT_CATEGORY_LENGTH} 文字以内で入力してください")
     return text
 
 
@@ -185,7 +185,7 @@ class KakeiboService:
         path = Path(output_path)
         with path.open("w", newline="", encoding="utf-8-sig") as csv_file:
             writer = csv.writer(csv_file)
-            writer.writerow(["id", "日付", "区分", "カテゴリ", "内容カテゴリ", "金額", "メモ", "作成日時"])
+            writer.writerow(["id", "日付", "区分", "カテゴリ", "内容", "金額", "メモ", "作成日時"])
             for row in rows:
                 writer.writerow(
                     [
