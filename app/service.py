@@ -72,16 +72,17 @@ class KakeiboService:
         category: str,
         amount_text: str,
         memo: str,
-    ) -> None:
+    ) -> str:
         date_value = validate_date(date_text)
         type_value = validate_entry_type(entry_type)
         category_value = validate_category(category)
         amount_value = validate_amount(amount_text)
         memo_value = validate_memo(memo)
         self.database.insert_entry(date_value, type_value, category_value, amount_value, memo_value)
+        return date_value
 
-    def list_entries(self) -> list[dict]:
-        return self.database.fetch_entries()
+    def list_entries(self, date_filter: str | None = None) -> list[dict]:
+        return self.database.fetch_entries(date_filter=date_filter)
 
     def delete_entry(self, entry_id: int) -> bool:
         return self.database.delete_entry(entry_id)
@@ -101,6 +102,21 @@ class KakeiboService:
             "expense_total": expense_total,
             "balance": income_total - expense_total,
         }
+
+    def daily_totals(self, year: int, month: int) -> dict[str, dict]:
+        year_month = f"{year:04d}-{month:02d}"
+        rows = self.database.fetch_daily_totals(year_month)
+        results: dict[str, dict] = {}
+        for row in rows:
+            income_total = int(row["income_total"])
+            expense_total = int(row["expense_total"])
+            results[row["date"]] = {
+                "entry_count": int(row["entry_count"]),
+                "income_total": income_total,
+                "expense_total": expense_total,
+                "balance": income_total - expense_total,
+            }
+        return results
 
     def export_csv(self, output_path: str | Path) -> int:
         rows = self.database.fetch_all_entries_for_export()

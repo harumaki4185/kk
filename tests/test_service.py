@@ -48,6 +48,27 @@ class KakeiboServiceTest(unittest.TestCase):
         self.assertEqual(rows[1][2], "支出")
         self.assertEqual(rows[1][4], "2400")
 
+    def test_list_entries_with_date_filter(self) -> None:
+        self.service.create_entry("2026-03-01", "expense", "食費", "1000", "")
+        self.service.create_entry("2026-03-02", "expense", "食費", "2000", "")
+
+        rows = self.service.list_entries(date_filter="2026-03-01")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["date"], "2026-03-01")
+        self.assertEqual(rows[0]["amount"], 1000)
+
+    def test_daily_totals(self) -> None:
+        self.service.create_entry("2026-03-01", "income", "その他", "5000", "")
+        self.service.create_entry("2026-03-01", "expense", "食費", "1500", "")
+        self.service.create_entry("2026-03-02", "expense", "日用品", "500", "")
+
+        totals = self.service.daily_totals(2026, 3)
+        self.assertEqual(totals["2026-03-01"]["entry_count"], 2)
+        self.assertEqual(totals["2026-03-01"]["income_total"], 5000)
+        self.assertEqual(totals["2026-03-01"]["expense_total"], 1500)
+        self.assertEqual(totals["2026-03-01"]["balance"], 3500)
+        self.assertEqual(totals["2026-03-02"]["balance"], -500)
+
 
 if __name__ == "__main__":
     unittest.main()

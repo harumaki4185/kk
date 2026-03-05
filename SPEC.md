@@ -29,6 +29,9 @@
 - 一覧表示
   - 最新順表示
   - 行選択で削除
+- カレンダー表示
+  - 月カレンダーで日別の収支を表示
+  - 日付選択で明細を当日分に絞り込み
 - 月次集計
   - 当月の収入合計
   - 当月の支出合計
@@ -129,7 +132,7 @@ CREATE TABLE IF NOT EXISTS entries (
 - Python 3.11 セットアップ
 - `pip install -r requirements.txt`
 - `python -m unittest discover -s tests -p "test_*.py"`
-- `pyinstaller --onefile --name kakeibo run.py`
+- `pyinstaller --onefile --noconsole --name kakeibo run.py`
 
 ### 9.3 成果物
 - `dist/kakeibo.exe` を Artifact としてアップロード

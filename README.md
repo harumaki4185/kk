@@ -5,6 +5,7 @@ Windows向けのシンプルな家計簿アプリです。
 
 ## 機能
 - 収支入力（収入/支出、カテゴリ、金額、メモ）
+- 月カレンダー表示（日別収支を表示、日付クリックで当日明細に絞り込み）
 - 明細一覧表示（最新順）
 - 選択行削除
 - 当月の収入・支出・収支集計
@@ -23,7 +24,7 @@ python -m unittest discover -s tests -p "test_*.py"
 ## Windowsビルド（ローカル）
 ```bash
 pip install -r requirements.txt
-pyinstaller --onefile --name kakeibo run.py
+pyinstaller --onefile --noconsole --name kakeibo run.py
 ```
 
 ビルド成果物:
@@ -43,3 +44,6 @@ pyinstaller --onefile --name kakeibo run.py
 - `No module named '_tkinter'` が出る場合:
   - そのPython環境はGUIライブラリ（Tk）なしです。
   - Windowsでは Actions 生成の `kakeibo.exe` を使うか、Tk対応のPythonをインストールしてください。
+- 起動時に黒いウィンドウ（コンソール）が出る場合:
+  - 古いビルドの `.exe` を使っている可能性があります。
+  - `--noconsole` で再ビルドした新しい Artifact を利用してください。

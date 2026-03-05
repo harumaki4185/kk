@@ -69,14 +69,25 @@ class Database:
         with self.connect() as conn:
             conn.execute(query, (date_value, entry_type, category, amount, memo, created_at))
 
-    def fetch_entries(self) -> list[dict]:
-        query = """
-        SELECT id, date, type, category, amount, memo, created_at
-        FROM entries
-        ORDER BY date DESC, id DESC;
-        """
+    def fetch_entries(self, date_filter: str | None = None) -> list[dict]:
+        if date_filter:
+            query = """
+            SELECT id, date, type, category, amount, memo, created_at
+            FROM entries
+            WHERE date = ?
+            ORDER BY date DESC, id DESC;
+            """
+            params = (date_filter,)
+        else:
+            query = """
+            SELECT id, date, type, category, amount, memo, created_at
+            FROM entries
+            ORDER BY date DESC, id DESC;
+            """
+            params = ()
+
         with self.connect() as conn:
-            rows = conn.execute(query).fetchall()
+            rows = conn.execute(query, params).fetchall()
         return [dict(row) for row in rows]
 
     def delete_entry(self, entry_id: int) -> bool:
@@ -99,6 +110,22 @@ class Database:
             "income_total": int(row["income_total"]),
             "expense_total": int(row["expense_total"]),
         }
+
+    def fetch_daily_totals(self, year_month: str) -> list[dict]:
+        query = """
+        SELECT
+            date,
+            COUNT(*) AS entry_count,
+            COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) AS income_total,
+            COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS expense_total
+        FROM entries
+        WHERE substr(date, 1, 7) = ?
+        GROUP BY date
+        ORDER BY date ASC;
+        """
+        with self.connect() as conn:
+            rows = conn.execute(query, (year_month,)).fetchall()
+        return [dict(row) for row in rows]
 
     def fetch_all_entries_for_export(self) -> list[dict]:
         query = """
