@@ -11,6 +11,7 @@ try:
         DATE_FORMAT,
         ENTRY_TYPE_EXPENSE,
         ENTRY_TYPE_INCOME,
+        MAX_CONTENT_CATEGORY_LENGTH,
         MAX_MEMO_LENGTH,
     )
     from .db import Database
@@ -20,6 +21,7 @@ except ImportError:  # pragma: no cover
         DATE_FORMAT,
         ENTRY_TYPE_EXPENSE,
         ENTRY_TYPE_INCOME,
+        MAX_CONTENT_CATEGORY_LENGTH,
         MAX_MEMO_LENGTH,
     )
     from db import Database
@@ -73,6 +75,13 @@ def validate_memo(memo: str) -> str:
     return text
 
 
+def validate_content_category(content_category: str) -> str:
+    text = content_category.strip()
+    if len(text) > MAX_CONTENT_CATEGORY_LENGTH:
+        raise ValueError(f"内容カテゴリは {MAX_CONTENT_CATEGORY_LENGTH} 文字以内で入力してください")
+    return text
+
+
 class KakeiboService:
     def __init__(self, database: Database) -> None:
         self.database = database
@@ -84,13 +93,48 @@ class KakeiboService:
         category: str,
         amount_text: str,
         memo: str,
+        content_category: str = "",
     ) -> None:
         date_value = validate_date(date_text)
         type_value = validate_entry_type(entry_type)
         category_value = validate_category(category)
+        content_category_value = validate_content_category(content_category)
         amount_value = validate_amount(amount_text)
         memo_value = validate_memo(memo)
-        self.database.insert_entry(date_value, type_value, category_value, amount_value, memo_value)
+        self.database.insert_entry(
+            date_value,
+            type_value,
+            category_value,
+            content_category_value,
+            amount_value,
+            memo_value,
+        )
+
+    def update_entry(
+        self,
+        entry_id: int,
+        date_text: str,
+        entry_type: str,
+        category: str,
+        amount_text: str,
+        memo: str,
+        content_category: str = "",
+    ) -> bool:
+        date_value = validate_date(date_text)
+        type_value = validate_entry_type(entry_type)
+        category_value = validate_category(category)
+        content_category_value = validate_content_category(content_category)
+        amount_value = validate_amount(amount_text)
+        memo_value = validate_memo(memo)
+        return self.database.update_entry(
+            entry_id=entry_id,
+            date_value=date_value,
+            entry_type=type_value,
+            category=category_value,
+            content_category=content_category_value,
+            amount=amount_value,
+            memo=memo_value,
+        )
 
     def list_entries(
         self,
@@ -141,7 +185,7 @@ class KakeiboService:
         path = Path(output_path)
         with path.open("w", newline="", encoding="utf-8-sig") as csv_file:
             writer = csv.writer(csv_file)
-            writer.writerow(["id", "日付", "区分", "カテゴリ", "金額", "メモ", "作成日時"])
+            writer.writerow(["id", "日付", "区分", "カテゴリ", "内容カテゴリ", "金額", "メモ", "作成日時"])
             for row in rows:
                 writer.writerow(
                     [
@@ -149,6 +193,7 @@ class KakeiboService:
                         row["date"],
                         "収入" if row["type"] == ENTRY_TYPE_INCOME else "支出",
                         row["category"],
+                        row["content_category"],
                         row["amount"],
                         row["memo"],
                         row["created_at"],

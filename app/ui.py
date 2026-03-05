@@ -124,10 +124,12 @@ class KakeiboApp:
         self.root.geometry("1450x920")
         self.root.minsize(1240, 820)
         self.root.configure(bg=BG_MAIN, padx=20, pady=20)
+        self._set_default_window_state()
 
         self.date_var = tk.StringVar(value=today.strftime(DATE_FORMAT))
         self.type_var = tk.StringVar(value=ENTRY_TYPE_EXPENSE)
         self.category_var = tk.StringVar(value=CATEGORIES[0])
+        self.content_category_var = tk.StringVar(value="")
         self.amount_var = tk.StringVar(value="")
         self.memo_var = tk.StringVar(value="")
         self.status_var = tk.StringVar(value="")
@@ -139,12 +141,29 @@ class KakeiboApp:
         self.balance_var = tk.StringVar(value="収支: 0 円")
 
         self.calendar_buttons: list[tk.Button] = []
+        self.entries_by_id: dict[int, dict] = {}
+        self.current_entry_id: int | None = None
 
         self._configure_style()
         self._build_layout()
         self.refresh_all()
         self.show_view(VIEW_CALENDAR)
         self._set_status("準備できました。入力してみてください。")
+
+    def _set_default_window_state(self) -> None:
+        try:
+            self.root.state("zoomed")
+            return
+        except tk.TclError:
+            pass
+        try:
+            self.root.attributes("-zoomed", True)
+            return
+        except tk.TclError:
+            pass
+        self.root.geometry(
+            f"{self.root.winfo_screenwidth()}x{self.root.winfo_screenheight()}+0+0"
+        )
 
     def _configure_style(self) -> None:
         style = ttk.Style(self.root)
@@ -367,7 +386,7 @@ class KakeiboApp:
             command=self.on_clear_date_filter,
         ).grid(row=0, column=1, sticky="e")
 
-        columns = ("date", "type", "category", "amount", "memo")
+        columns = ("date", "type", "category", "content_category", "amount", "memo")
         self.tree = ttk.Treeview(
             frame,
             columns=columns,
@@ -375,18 +394,21 @@ class KakeiboApp:
             selectmode="browse",
         )
         self.tree.grid(row=1, column=0, sticky="nsew")
+        self.tree.bind("<<TreeviewSelect>>", self.on_select_entry)
 
         self.tree.heading("date", text="日付")
         self.tree.heading("type", text="区分")
         self.tree.heading("category", text="カテゴリ")
+        self.tree.heading("content_category", text="内容カテゴリ")
         self.tree.heading("amount", text="金額")
         self.tree.heading("memo", text="メモ")
 
         self.tree.column("date", width=140, anchor="center")
         self.tree.column("type", width=100, anchor="center")
-        self.tree.column("category", width=130, anchor="center")
-        self.tree.column("amount", width=160, anchor="e")
-        self.tree.column("memo", width=560, anchor="w")
+        self.tree.column("category", width=110, anchor="center")
+        self.tree.column("content_category", width=140, anchor="w")
+        self.tree.column("amount", width=140, anchor="e")
+        self.tree.column("memo", width=420, anchor="w")
 
         self.tree.tag_configure("income", background=COLOR_INCOME_BG, foreground=COLOR_INCOME)
         self.tree.tag_configure("expense", background=COLOR_EXPENSE_BG, foreground=COLOR_EXPENSE)
@@ -468,8 +490,20 @@ class KakeiboApp:
                 indicatoron=True,
             ).pack(side="left", padx=(0, 16))
 
-        tk.Label(frame, text="カテゴリ", font=BASE_FONT, bg=BG_FRAME).grid(
+        tk.Label(frame, text="内容カテゴリ", font=BASE_FONT, bg=BG_FRAME).grid(
             row=2, column=0, sticky="w", padx=(0, 8), pady=6
+        )
+        tk.Entry(
+            frame,
+            textvariable=self.content_category_var,
+            font=BASE_FONT,
+            bg=BG_INPUT,
+            relief="solid",
+            bd=1,
+        ).grid(row=2, column=1, columnspan=3, sticky="ew", pady=6)
+
+        tk.Label(frame, text="カテゴリ", font=BASE_FONT, bg=BG_FRAME).grid(
+            row=3, column=0, sticky="w", padx=(0, 8), pady=6
         )
         ttk.Combobox(
             frame,
@@ -478,10 +512,10 @@ class KakeiboApp:
             state="readonly",
             font=BASE_FONT,
             width=12,
-        ).grid(row=2, column=1, sticky="ew", pady=6)
+        ).grid(row=3, column=1, sticky="ew", pady=6)
 
         tk.Label(frame, text="金額（円）", font=BASE_FONT, bg=BG_FRAME).grid(
-            row=3, column=0, sticky="w", padx=(0, 8), pady=6
+            row=4, column=0, sticky="w", padx=(0, 8), pady=6
         )
         tk.Entry(
             frame,
@@ -492,10 +526,10 @@ class KakeiboApp:
             relief="solid",
             bd=2,
             fg=COLOR_TEXT_PRIMARY,
-        ).grid(row=3, column=1, sticky="ew", pady=6)
+        ).grid(row=4, column=1, sticky="ew", pady=6)
 
         tk.Label(frame, text="メモ", font=BASE_FONT, bg=BG_FRAME).grid(
-            row=4, column=0, sticky="w", padx=(0, 8), pady=6
+            row=5, column=0, sticky="w", padx=(0, 8), pady=6
         )
         tk.Entry(
             frame,
@@ -504,9 +538,9 @@ class KakeiboApp:
             bg=BG_INPUT,
             relief="solid",
             bd=1,
-        ).grid(row=4, column=1, columnspan=3, sticky="ew", pady=6)
+        ).grid(row=5, column=1, columnspan=3, sticky="ew", pady=6)
 
-        tk.Button(
+        self.submit_button = tk.Button(
             frame,
             text="追加する",
             font=BUTTON_FONT,
@@ -519,7 +553,24 @@ class KakeiboApp:
             width=10,
             cursor="hand2",
             command=self.on_add,
-        ).grid(row=5, column=0, columnspan=4, sticky="ew", pady=(14, 0))
+        )
+        self.submit_button.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(14, 0))
+
+        self.cancel_edit_button = tk.Button(
+            frame,
+            text="編集をやめる",
+            font=BASE_FONT,
+            bg=BG_INPUT,
+            fg=COLOR_TEXT_PRIMARY,
+            activebackground=COLOR_TREE_SELECTED_BG,
+            activeforeground=COLOR_TEXT_PRIMARY,
+            relief="raised",
+            bd=2,
+            cursor="hand2",
+            command=self.on_cancel_edit,
+            state="disabled",
+        )
+        self.cancel_edit_button.grid(row=6, column=2, columnspan=2, sticky="ew", pady=(14, 0), padx=(8, 0))
 
     def _build_summary_frame(self) -> None:
         frame = tk.LabelFrame(
@@ -626,6 +677,29 @@ class KakeiboApp:
 
     def _month_key(self) -> str:
         return f"{self.calendar_year:04d}-{self.calendar_month:02d}"
+
+    def _set_edit_mode(self, entry_id: int | None) -> None:
+        self.current_entry_id = entry_id
+        if entry_id is None:
+            self.submit_button.configure(text="追加する")
+            self.cancel_edit_button.configure(state="disabled")
+        else:
+            self.submit_button.configure(text="更新する")
+            self.cancel_edit_button.configure(state="normal")
+
+    def _clear_input_values(self) -> None:
+        self.content_category_var.set("")
+        self.amount_var.set("")
+        self.memo_var.set("")
+
+    def _populate_form_for_edit(self, row: dict) -> None:
+        self.date_var.set(row["date"])
+        self.type_var.set(row["type"])
+        self.category_var.set(row["category"])
+        self.content_category_var.set(row.get("content_category", ""))
+        self.amount_var.set(str(row["amount"]))
+        self.memo_var.set(row["memo"])
+        self._set_edit_mode(int(row["id"]))
 
     def _update_view_buttons(self) -> None:
         active = self.calendar_view_btn if self.current_view == VIEW_CALENDAR else self.list_view_btn
@@ -736,6 +810,7 @@ class KakeiboApp:
     def refresh_entries(self) -> None:
         for item_id in self.tree.get_children():
             self.tree.delete(item_id)
+        self.entries_by_id = {}
 
         if self.selected_date_filter:
             self.list_title_var.set(f"明細一覧（{self.selected_date_filter}）")
@@ -746,6 +821,7 @@ class KakeiboApp:
             rows = self.service.list_entries(year_month_filter=month_key)
 
         for row in rows:
+            self.entries_by_id[int(row["id"])] = row
             label = "収入" if row["type"] == ENTRY_TYPE_INCOME else "支出"
             amount_text = self._format_amount(row["amount"], row["type"])
             tag = "income" if row["type"] == ENTRY_TYPE_INCOME else "expense"
@@ -753,9 +829,19 @@ class KakeiboApp:
                 "",
                 "end",
                 iid=str(row["id"]),
-                values=(row["date"], label, row["category"], amount_text, row["memo"]),
+                values=(
+                    row["date"],
+                    label,
+                    row["category"],
+                    row.get("content_category", ""),
+                    amount_text,
+                    row["memo"],
+                ),
                 tags=(tag,),
             )
+
+        if self.current_entry_id is not None and self.current_entry_id not in self.entries_by_id:
+            self._set_edit_mode(None)
 
     def refresh_summary(self) -> None:
         summary = self.service.monthly_summary(self.calendar_year, self.calendar_month)
@@ -784,23 +870,57 @@ class KakeiboApp:
         self.refresh_all()
         self._set_status("日付選択を解除しました")
 
+    def on_select_entry(self, _event: tk.Event | None = None) -> None:
+        selected = self.tree.selection()
+        if not selected:
+            return
+        entry_id = int(selected[0])
+        row = self.entries_by_id.get(entry_id)
+        if row is None:
+            return
+        self._populate_form_for_edit(row)
+        self._set_status(f"{row['date']} の明細を編集中です")
+
+    def on_cancel_edit(self) -> None:
+        self._set_edit_mode(None)
+        self.tree.selection_remove(*self.tree.selection())
+        self._clear_input_values()
+        self._set_status("編集を解除しました")
+
     def on_add(self) -> None:
         input_date = self.date_var.get()
         previous_filter = self.selected_date_filter
+        is_update = self.current_entry_id is not None
         try:
-            self.service.create_entry(
-                date_text=input_date,
-                entry_type=self.type_var.get(),
-                category=self.category_var.get(),
-                amount_text=self.amount_var.get(),
-                memo=self.memo_var.get(),
-            )
+            if is_update:
+                updated = self.service.update_entry(
+                    entry_id=self.current_entry_id,
+                    date_text=input_date,
+                    entry_type=self.type_var.get(),
+                    category=self.category_var.get(),
+                    content_category=self.content_category_var.get(),
+                    amount_text=self.amount_var.get(),
+                    memo=self.memo_var.get(),
+                )
+                if not updated:
+                    self._set_edit_mode(None)
+                    self._set_status("更新対象が見つかりませんでした", is_error=True)
+                    return
+            else:
+                self.service.create_entry(
+                    date_text=input_date,
+                    entry_type=self.type_var.get(),
+                    category=self.category_var.get(),
+                    content_category=self.content_category_var.get(),
+                    amount_text=self.amount_var.get(),
+                    memo=self.memo_var.get(),
+                )
         except ValueError as exc:
             self._set_status(str(exc), is_error=True)
             messagebox.showerror("入力エラー", str(exc))
             return
         except (sqlite3.Error, OSError):
-            message = "保存に失敗しました"
+            message = "更新に失敗しました" if is_update else "保存に失敗しました"
             self._set_status(message, is_error=True)
             messagebox.showerror("エラー", message)
             return
@@ -817,10 +937,13 @@ class KakeiboApp:
         except ValueError:
             self.selected_date_filter = previous_filter
 
-        self.amount_var.set("")
-        self.memo_var.set("")
+        if is_update:
+            self._set_edit_mode(None)
+            self.tree.selection_remove(*self.tree.selection())
+        else:
+            self._clear_input_values()
         self.refresh_all()
-        self._set_status("保存しました")
+        self._set_status("更新しました" if is_update else "保存しました")
 
     def on_delete(self) -> None:
         selected = self.tree.selection()
@@ -844,6 +967,9 @@ class KakeiboApp:
             self._set_status("削除対象が見つかりませんでした", is_error=True)
             return
 
+        if self.current_entry_id == entry_id:
+            self._set_edit_mode(None)
+            self._clear_input_values()
         self.refresh_all()
         self._set_status("削除しました")
 

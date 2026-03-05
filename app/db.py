@@ -48,6 +48,7 @@ class Database:
             date TEXT NOT NULL,
             type TEXT NOT NULL,
             category TEXT NOT NULL,
+            content_category TEXT DEFAULT '',
             amount INTEGER NOT NULL,
             memo TEXT DEFAULT '',
             created_at TEXT NOT NULL
@@ -55,22 +56,72 @@ class Database:
         """
         with self.connect() as conn:
             conn.execute(query)
+            columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(entries);").fetchall()
+            }
+            if "content_category" not in columns:
+                conn.execute(
+                    "ALTER TABLE entries ADD COLUMN content_category TEXT DEFAULT '';"
+                )
 
     def insert_entry(
         self,
         date_value: str,
         entry_type: str,
         category: str,
+        content_category: str,
         amount: int,
         memo: str,
     ) -> None:
         query = """
-        INSERT INTO entries (date, type, category, amount, memo, created_at)
-        VALUES (?, ?, ?, ?, ?, ?);
+        INSERT INTO entries (date, type, category, content_category, amount, memo, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?);
         """
         created_at = datetime.now().isoformat(timespec="seconds")
         with self.connect() as conn:
-            conn.execute(query, (date_value, entry_type, category, amount, memo, created_at))
+            conn.execute(
+                query,
+                (
+                    date_value,
+                    entry_type,
+                    category,
+                    content_category,
+                    amount,
+                    memo,
+                    created_at,
+                ),
+            )
+
+    def update_entry(
+        self,
+        entry_id: int,
+        date_value: str,
+        entry_type: str,
+        category: str,
+        content_category: str,
+        amount: int,
+        memo: str,
+    ) -> bool:
+        query = """
+        UPDATE entries
+        SET date = ?, type = ?, category = ?, content_category = ?, amount = ?, memo = ?
+        WHERE id = ?;
+        """
+        with self.connect() as conn:
+            cursor = conn.execute(
+                query,
+                (
+                    date_value,
+                    entry_type,
+                    category,
+                    content_category,
+                    amount,
+                    memo,
+                    entry_id,
+                ),
+            )
+            return cursor.rowcount > 0
 
     def fetch_entries(
         self,
@@ -78,7 +129,7 @@ class Database:
         year_month_filter: str | None = None,
     ) -> list[dict]:
         query = """
-        SELECT id, date, type, category, amount, memo, created_at
+        SELECT id, date, type, category, content_category, amount, memo, created_at
         FROM entries
         """
         where_clauses: list[str] = []
@@ -139,7 +190,7 @@ class Database:
 
     def fetch_all_entries_for_export(self) -> list[dict]:
         query = """
-        SELECT id, date, type, category, amount, memo, created_at
+        SELECT id, date, type, category, content_category, amount, memo, created_at
         FROM entries
         ORDER BY date ASC, id ASC;
         """

@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from app.constants import MAX_CONTENT_CATEGORY_LENGTH
 from app.db import Database
 from app.service import KakeiboService
 
@@ -59,8 +60,57 @@ class KakeiboServiceTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "メモは 100 文字以内で入力してください"):
             self.service.create_entry("2026-03-01", "expense", "食費", "1200", "a" * 101)
 
+    def test_too_long_content_category(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            f"内容カテゴリは {MAX_CONTENT_CATEGORY_LENGTH} 文字以内で入力してください",
+        ):
+            self.service.create_entry(
+                "2026-03-01",
+                "expense",
+                "食費",
+                "1200",
+                "",
+                content_category="a" * (MAX_CONTENT_CATEGORY_LENGTH + 1),
+            )
+
+    def test_update_entry_and_content_category(self) -> None:
+        self.service.create_entry(
+            "2026-03-01",
+            "expense",
+            "食費",
+            "1200",
+            "ランチ",
+            content_category="昼食",
+        )
+        entry_id = self.service.list_entries(date_filter="2026-03-01")[0]["id"]
+
+        updated = self.service.update_entry(
+            entry_id=entry_id,
+            date_text="2026-03-03",
+            entry_type="income",
+            category="その他",
+            amount_text="5000",
+            memo="修正",
+            content_category="返金",
+        )
+
+        self.assertTrue(updated)
+        rows = self.service.list_entries(date_filter="2026-03-03")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["content_category"], "返金")
+        self.assertEqual(rows[0]["amount"], 5000)
+        self.assertEqual(rows[0]["memo"], "修正")
+
     def test_export_csv(self) -> None:
-        self.service.create_entry("2026-03-01", "expense", "日用品", "2400", "洗剤")
+        self.service.create_entry(
+            "2026-03-01",
+            "expense",
+            "日用品",
+            "2400",
+            "洗剤",
+            content_category="消耗品",
+        )
         output_path = Path(self.temp_dir.name) / "out.csv"
 
         row_count = self.service.export_csv(output_path)
@@ -69,10 +119,11 @@ class KakeiboServiceTest(unittest.TestCase):
         with output_path.open("r", encoding="utf-8-sig", newline="") as csv_file:
             rows = list(csv.reader(csv_file))
 
-        self.assertEqual(rows[0][0], "id")
+        self.assertEqual(rows[0], ["id", "日付", "区分", "カテゴリ", "内容カテゴリ", "金額", "メモ", "作成日時"])
         self.assertEqual(rows[1][1], "2026-03-01")
         self.assertEqual(rows[1][2], "支出")
-        self.assertEqual(rows[1][4], "2400")
+        self.assertEqual(rows[1][4], "消耗品")
+        self.assertEqual(rows[1][5], "2400")
 
     def test_list_entries_with_date_filter(self) -> None:
         self.service.create_entry("2026-03-01", "expense", "食費", "1000", "")
