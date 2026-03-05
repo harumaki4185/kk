@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -96,6 +97,21 @@ class KakeiboServiceTest(unittest.TestCase):
 
     def test_delete_entry_returns_false_for_missing_id(self) -> None:
         self.assertFalse(self.database.delete_entry(999999))
+
+    def test_connect_rolls_back_on_error(self) -> None:
+        with self.assertRaises(sqlite3.OperationalError):
+            with self.database.connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO entries (date, type, category, amount, memo, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    ("2026-03-05", "expense", "食費", 1200, "", "2026-03-05T10:00:00"),
+                )
+                conn.execute("INSERT INTO entries (unknown_column) VALUES (1)")
+
+        rows = self.database.fetch_entries(date_filter="2026-03-05")
+        self.assertEqual(rows, [])
 
 
 if __name__ == "__main__":

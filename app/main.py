@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sqlite3
+
 try:
     from .db import Database
     from .service import KakeiboService
@@ -12,20 +14,23 @@ def _show_error_dialog(message: str) -> None:
     try:
         import tkinter as tk
         from tkinter import messagebox
-    except Exception:
+    except ModuleNotFoundError:
         print(message)
         return
 
-    root = tk.Tk()
-    root.withdraw()
-    messagebox.showerror("エラー", message)
-    root.destroy()
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror("エラー", message)
+        root.destroy()
+    except tk.TclError:
+        print(message)
 
 
 def main() -> int:
     try:
         import tkinter as tk
-    except Exception:
+    except ModuleNotFoundError:
         print("Tkinter が利用できないため、GUIを起動できません。")
         print("Windows向けの配布版（kakeibo.exe）を使用するか、Tk対応のPythonを利用してください。")
         return 1
@@ -38,7 +43,7 @@ def main() -> int:
     database = Database()
     try:
         database.init_db()
-    except Exception:
+    except (sqlite3.Error, OSError):
         _show_error_dialog("データベースの初期化に失敗しました")
         return 1
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import calendar
+import sqlite3
 import tkinter as tk
 from datetime import date, datetime
 from tkinter import filedialog, messagebox, ttk
@@ -676,7 +677,7 @@ class KakeiboApp:
             self._set_status(str(exc), is_error=True)
             messagebox.showerror("入力エラー", str(exc))
             return
-        except Exception:
+        except (sqlite3.Error, OSError):
             message = "保存に失敗しました"
             self._set_status(message, is_error=True)
             messagebox.showerror("エラー", message)
@@ -727,7 +728,7 @@ class KakeiboApp:
 
         try:
             row_count = self.service.export_csv(output_path)
-        except Exception:
+        except (sqlite3.Error, OSError):
             message = "CSVの保存に失敗しました"
             self._set_status(message, is_error=True)
             messagebox.showerror("エラー", message)
