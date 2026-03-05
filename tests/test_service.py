@@ -33,6 +33,31 @@ class KakeiboServiceTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "金額は数字で入力してください"):
             self.service.create_entry("2026-03-01", "expense", "食費", "12a", "")
 
+    def test_fullwidth_amount_is_accepted(self) -> None:
+        self.service.create_entry("2026-03-01", "expense", "食費", "１,２３４", "")
+        summary = self.service.monthly_summary(2026, 3)
+        self.assertEqual(summary["expense_total"], 1234)
+
+    def test_invalid_date_format(self) -> None:
+        with self.assertRaisesRegex(ValueError, "日付は YYYY-MM-DD 形式で入力してください"):
+            self.service.create_entry("2026/03/01", "expense", "食費", "1200", "")
+
+    def test_invalid_date_value(self) -> None:
+        with self.assertRaisesRegex(ValueError, "日付が正しくありません"):
+            self.service.create_entry("2026-02-30", "expense", "食費", "1200", "")
+
+    def test_invalid_entry_type(self) -> None:
+        with self.assertRaisesRegex(ValueError, "区分の値が不正です"):
+            self.service.create_entry("2026-03-01", "transfer", "食費", "1200", "")
+
+    def test_invalid_category(self) -> None:
+        with self.assertRaisesRegex(ValueError, "カテゴリを選択してください"):
+            self.service.create_entry("2026-03-01", "expense", "娯楽", "1200", "")
+
+    def test_too_long_memo(self) -> None:
+        with self.assertRaisesRegex(ValueError, "メモは 100 文字以内で入力してください"):
+            self.service.create_entry("2026-03-01", "expense", "食費", "1200", "a" * 101)
+
     def test_export_csv(self) -> None:
         self.service.create_entry("2026-03-01", "expense", "日用品", "2400", "洗剤")
         output_path = Path(self.temp_dir.name) / "out.csv"
@@ -68,6 +93,9 @@ class KakeiboServiceTest(unittest.TestCase):
         self.assertEqual(totals["2026-03-01"]["expense_total"], 1500)
         self.assertEqual(totals["2026-03-01"]["balance"], 3500)
         self.assertEqual(totals["2026-03-02"]["balance"], -500)
+
+    def test_delete_entry_returns_false_for_missing_id(self) -> None:
+        self.assertFalse(self.database.delete_entry(999999))
 
 
 if __name__ == "__main__":

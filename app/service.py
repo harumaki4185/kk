@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import csv
-from datetime import date, datetime
+import re
+from datetime import date
 from pathlib import Path
 
 try:
@@ -24,11 +25,21 @@ except ImportError:  # pragma: no cover
     from db import Database
 
 
+_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_FULLWIDTH_TRANSLATION = str.maketrans(
+    "０１２３４５６７８９，．＋－　",
+    "0123456789,.+- ",
+)
+
+
 def validate_date(date_text: str) -> str:
+    normalized = date_text.strip()
+    if not _DATE_PATTERN.fullmatch(normalized):
+        raise ValueError("日付は YYYY-MM-DD 形式で入力してください")
     try:
-        parsed = datetime.strptime(date_text, DATE_FORMAT)
+        parsed = date.fromisoformat(normalized)
     except ValueError as exc:
-        raise ValueError("日付は YYYY-MM-DD 形式で入力してください") from exc
+        raise ValueError("日付が正しくありません") from exc
     return parsed.strftime(DATE_FORMAT)
 
 
@@ -45,8 +56,9 @@ def validate_category(category: str) -> str:
 
 
 def validate_amount(amount_text: str) -> int:
-    normalized = amount_text.replace(",", "").strip()
-    if not normalized.isdigit():
+    normalized = amount_text.translate(_FULLWIDTH_TRANSLATION)
+    normalized = normalized.replace(",", "").strip()
+    if not normalized.isascii() or not normalized.isdigit():
         raise ValueError("金額は数字で入力してください")
     amount = int(normalized)
     if amount < 1:
@@ -72,14 +84,13 @@ class KakeiboService:
         category: str,
         amount_text: str,
         memo: str,
-    ) -> str:
+    ) -> None:
         date_value = validate_date(date_text)
         type_value = validate_entry_type(entry_type)
         category_value = validate_category(category)
         amount_value = validate_amount(amount_text)
         memo_value = validate_memo(memo)
         self.database.insert_entry(date_value, type_value, category_value, amount_value, memo_value)
-        return date_value
 
     def list_entries(self, date_filter: str | None = None) -> list[dict]:
         return self.database.fetch_entries(date_filter=date_filter)

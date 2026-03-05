@@ -35,6 +35,9 @@ class Database:
         try:
             yield connection
             connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
         finally:
             connection.close()
 
@@ -70,21 +73,15 @@ class Database:
             conn.execute(query, (date_value, entry_type, category, amount, memo, created_at))
 
     def fetch_entries(self, date_filter: str | None = None) -> list[dict]:
+        query = """
+        SELECT id, date, type, category, amount, memo, created_at
+        FROM entries
+        """
+        params: tuple[str, ...] = ()
         if date_filter:
-            query = """
-            SELECT id, date, type, category, amount, memo, created_at
-            FROM entries
-            WHERE date = ?
-            ORDER BY date DESC, id DESC;
-            """
+            query += "WHERE date = ?\n"
             params = (date_filter,)
-        else:
-            query = """
-            SELECT id, date, type, category, amount, memo, created_at
-            FROM entries
-            ORDER BY date DESC, id DESC;
-            """
-            params = ()
+        query += "ORDER BY date DESC, id DESC;"
 
         with self.connect() as conn:
             rows = conn.execute(query, params).fetchall()
