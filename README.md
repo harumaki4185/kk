@@ -12,7 +12,7 @@ Windows向けのシンプルな家計簿アプリです。
 
 ## ローカル実行（開発時）
 ```bash
-python -m app.main
+python run.py
 ```
 
 ## テスト
@@ -23,7 +23,7 @@ python -m unittest discover -s tests -p "test_*.py"
 ## Windowsビルド（ローカル）
 ```bash
 pip install -r requirements.txt
-pyinstaller --onefile --name kakeibo app/main.py
+pyinstaller --onefile --name kakeibo run.py
 ```
 
 ビルド成果物:
@@ -38,3 +38,8 @@ pyinstaller --onefile --name kakeibo app/main.py
   - Artifact 名: `kakeibo-windows`
   - ファイル: `dist/kakeibo.exe`
   - 保持期間: 14日
+
+## トラブルシュート
+- `No module named '_tkinter'` が出る場合:
+  - そのPython環境はGUIライブラリ（Tk）なしです。
+  - Windowsでは Actions 生成の `kakeibo.exe` を使うか、Tk対応のPythonをインストールしてください。

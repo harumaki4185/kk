@@ -128,7 +128,8 @@ CREATE TABLE IF NOT EXISTS entries (
 - `runs-on: windows-latest`
 - Python 3.11 セットアップ
 - `pip install -r requirements.txt`
-- `pyinstaller --onefile --name kakeibo app/main.py`
+- `python -m unittest discover -s tests -p "test_*.py"`
+- `pyinstaller --onefile --name kakeibo run.py`
 
 ### 9.3 成果物
 - `dist/kakeibo.exe` を Artifact としてアップロード
