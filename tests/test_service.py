@@ -63,7 +63,7 @@ class KakeiboServiceTest(unittest.TestCase):
     def test_too_long_content_category(self) -> None:
         with self.assertRaisesRegex(
             ValueError,
-            f"内容カテゴリは {MAX_CONTENT_CATEGORY_LENGTH} 文字以内で入力してください",
+            f"内容は {MAX_CONTENT_CATEGORY_LENGTH} 文字以内で入力してください",
         ):
             self.service.create_entry(
                 "2026-03-01",
@@ -119,7 +119,7 @@ class KakeiboServiceTest(unittest.TestCase):
         with output_path.open("r", encoding="utf-8-sig", newline="") as csv_file:
             rows = list(csv.reader(csv_file))
 
-        self.assertEqual(rows[0], ["id", "日付", "区分", "カテゴリ", "内容カテゴリ", "金額", "メモ", "作成日時"])
+        self.assertEqual(rows[0], ["id", "日付", "区分", "カテゴリ", "内容", "金額", "メモ", "作成日時"])
         self.assertEqual(rows[1][1], "2026-03-01")
         self.assertEqual(rows[1][2], "支出")
         self.assertEqual(rows[1][4], "消耗品")
