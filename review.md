@@ -1,187 +1,159 @@
-# 家計簿アプリ 全体コードレビュー（第2回）
+# 家計簿アプリ 全体コードレビュー（第3回）
 
-**対象**: `/Users/admin/Desktop/wk/kk` 全ファイル  
-**レビュー日**: 2026-03-05  
-**仕様書**: [SPEC.md](file:///Users/admin/Desktop/wk/kk/SPEC.md)
-
----
-
-## 前回レビュー指摘の対応状況
-
-| # | 内容 | 状態 |
-|---|------|------|
-| C-1 | 複数行選択バグ | ✅ `selectmode="browse"` で修正済 |
-| C-2 | DB例外時ロールバック欠如 | ❌ **未対応** |
-| W-1 | 全角数字でクラッシュ | ❌ 未対応 |
-| I-2 | `try/except ImportError` パターン | 🟡 `run.py` 導入で改善方向だが各ファイルに残存 |
-| I-5 | `Exception` キャッチが広い | 🟡 `main.py` のTkチェックで一部改善 |
+**対象**: 全ファイル  
+**レビュー日**: 2026-03-06  
+**仕様書**: SPEC.md
 
 ---
 
-## 🔴 Critical
+## 前回指摘の対応状況
 
-### C-1. `connect()` で例外発生時にロールバックされない（前回 C-2 継続）
+| # | 内容 | 状態 | 備考 |
+|---|------|------|------|
+| C-1 | DB例外時のロールバック欠如 | ✅ 修正済 | `except → rollback → raise` 追加 |
+| W-1 | 全角数字でクラッシュ | ✅ 修正済 | `_FULLWIDTH_TRANSLATION` で変換、`isascii()` チェック |
+| W-2 | 不正日付のバリデーション | ✅ 修正済 | `date.fromisoformat()` + 正規表現で二重チェック |
+| W-3 | 未使用インポート `SMALL_FONT` | ✅ 修正済 | ステータスバーで使用 |
+| I-1 | `create_entry` 戻り値型不整合 | ✅ 修正済 | `-> None` に戻った |
+| I-2 | SQLが2パターンに重複 | ✅ 修正済 | 動的WHERE句に統一 |
+| I-3 | `daily_totals` がUI未使用 | ✅ 修正済 | カレンダー機能で使用 |
+| I-4 | `date_filter` がUI未使用 | ✅ 修正済 | カレンダー日付選択で使用 |
+| I-5 | テストがService層のみ | ✅ 修正済 | 12件に拡充、ロールバックテスト含む |
+| I-6 | UI色のハードコード | ✅ 修正済 | 全色を `constants.py` に集約 |
+| I-5(旧) | `Exception` キャッチが広い | ✅ 修正済 | `sqlite3.Error, OSError` 等に限定 |
 
-**ファイル**: [db.py](file:///Users/admin/Desktop/wk/kk/app/db.py) L31-39
+> **前回指摘は全件対応済みです。** 👏
+
+---
+
+## 🟡 Warning（軽微な注意点）
+
+### W-1. カレンダーの `disabledforeground` 未設定
+
+**ファイル**: ui.py L587-594
 
 ```python
-@contextmanager
-def connect(self):
-    connection = sqlite3.connect(self.db_path)
-    connection.row_factory = sqlite3.Row
-    try:
-        yield connection
-        connection.commit()
-    finally:
-        connection.close()
+button.configure(
+    text="",
+    state="disabled",
+    command=lambda: None,
+    bg=COLOR_CALENDAR_EMPTY_BG,
+    fg=COLOR_TEXT_PRIMARY,
+)
 ```
 
-例外時に `rollback()` が呼ばれません。`close()` 時に暗黙ロールバックされますが、明示すべきです。
+`state="disabled"` にすると Tkinter はデフォルトの `disabledforeground` を使うため、`fg` 指定が無視されます。空セルなのでテキストがなく実害はありませんが、`disabledforeground` も明示する方がより堅牢です。
+
+---
+
+### W-2. `_show_error_dialog` の `root` がリークする可能性
+
+**ファイル**: main.py L21-27
+
+```python
+try:
+    root = tk.Tk()
+    root.withdraw()
+    messagebox.showerror("エラー", message)
+    root.destroy()
+except tk.TclError:
+    print(message)
+```
+
+`showerror` 後に例外が起きた場合、`root.destroy()` がスキップされます。`finally` ブロックで確実に `destroy` する方が安全です。ただし起動失敗時のみなのでリスクは低いです。
+
+---
+
+### W-3. `on_delete` で `sqlite3.Error` がキャッチされない
+
+**ファイル**: ui.py L700-715
+
+`on_add` と `on_export_csv` は `(sqlite3.Error, OSError)` をキャッチしていますが、`on_delete` には DB エラーのキャッチがありません。`service.delete_entry` → `database.delete_entry` で DB アクセスするため、同様のキャッチを入れるべきです。
 
 **修正案**:
 ```python
-try:
-    yield connection
-    connection.commit()
-except Exception:
-    connection.rollback()
-    raise
-finally:
-    connection.close()
-```
-
----
-
-## 🟡 Warning
-
-### W-1. 全角数字入力でクラッシュ（前回 W-1 継続）
-
-**ファイル**: [service.py](file:///Users/admin/Desktop/wk/kk/app/service.py) L47-54
-
-`isdigit()` は全角数字 `１２３` に `True` を返しますが、`int()` は変換できずキャッチされない例外が発生します。高齢者はIMEで全角入力しやすいため要注意。
-
-**修正案**: `normalized.isascii() and normalized.isdigit()` に変更。
-
----
-
-### W-2. `validate_date` が `2026-02-30` 等の不正日付を通す
-
-**ファイル**: [service.py](file:///Users/admin/Desktop/wk/kk/app/service.py) L27-32
-
-```python
-def validate_date(date_text: str) -> str:
-    parsed = datetime.strptime(date_text, DATE_FORMAT)
-    return parsed.strftime(DATE_FORMAT)
-```
-
-`strptime` は Python 3.11 時点で `"2026-02-30"` → 例外を出しますが、`"2026-13-01"` のようなケースでの挙動はバージョン依存です。より堅牢にするなら `date.fromisoformat()` を使う方が安全です。
-
----
-
-### W-3. `ui.py` の SMALL_FONT が未使用
-
-**ファイル**: [ui.py](file:///Users/admin/Desktop/wk/kk/app/ui.py) L34
-
-`SMALL_FONT` をインポートしていますが、使用箇所がありません。不要なインポートです。
-
----
-
-## 🔵 Improvement
-
-### I-1. `create_entry` の戻り値型がコードとテストで不整合
-
-**ファイル**: [service.py](file:///Users/admin/Desktop/wk/kk/app/service.py) L68-82
-
-```python
-def create_entry(...) -> str:    # 戻り値 str と宣言
+def on_delete(self) -> None:
     ...
-    return date_value              # date_value を返す
+    try:
+        if not self.service.delete_entry(entry_id):
+            ...
+    except (sqlite3.Error, OSError):
+        self._set_status("削除に失敗しました", is_error=True)
+        messagebox.showerror("エラー", "削除に失敗しました")
+        return
+    ...
 ```
-
-テスト側は戻り値を使っていないため現状問題ありませんが、もともと `-> None` だったものが `-> str` に変更されています。UIでも戻り値は使われていません。設計意図を明確にするか、使わないなら `-> None` に戻す方が良いでしょう。
 
 ---
 
-### I-2. `fetch_entries` のフィルタ用SQLが2パターンに分岐
+## 🔵 Improvement（改善提案）
 
-**ファイル**: [db.py](file:///Users/admin/Desktop/wk/kk/app/db.py) L72-91
+### I-1. SPEC.md のディレクトリ構成に `run.py` と `tests/` が未記載
+
+**ファイル**: SPEC.md L103-117
+
+```text
+.
+├─ app/
+│  ├─ main.py
+│  ├─ ui.py
+│  ├─ db.py
+│  ├─ service.py
+│  └─ constants.py
+├─ data/
+├─ requirements.txt
+├─ README.md
+└─ .github/
+   └─ workflows/
+      └─ build-windows.yml
+```
+
+`run.py` と `tests/` がありません。SPEC を最新に保つなら追記が望ましいです。
+
+---
+
+### I-2. `on_select_calendar_date` / `on_clear_date_filter` で `refresh_summary` が呼ばれない
+
+**ファイル**: ui.py L653-664
 
 ```python
-def fetch_entries(self, date_filter: str | None = None) -> list[dict]:
-    if date_filter:
-        query = """..."""
-        params = (date_filter,)
-    else:
-        query = """..."""
-        params = ()
+def on_select_calendar_date(self, date_text: str) -> None:
+    ...
+    self.refresh_calendar()
+    self.refresh_entries()     # ← refresh_summary なし
+
+def on_clear_date_filter(self) -> None:
+    ...
+    self.refresh_calendar()
+    self.refresh_entries()     # ← refresh_summary なし
 ```
 
-SQL文が2箇所にほぼ同じ内容で書かれています。WHERE句だけ動的に組み立てる方がDRYです：
+月を変えるときは `refresh_all()` でサマリも更新されますが、カレンダー日付のクリック / 全期間表示ボタンでは呼ばれません。現状はサマリが月単位なので実害はありませんが、将来的に選択日付とサマリが連動する場合に漏れが出ます。意図的なら問題ありません。
+
+---
+
+### I-3. `calendar` モジュールの `firstweekday` 未指定
+
+**ファイル**: ui.py L579
 
 ```python
-query = "SELECT ... ORDER BY date DESC, id DESC"
-if date_filter:
-    query = query.replace("ORDER", "WHERE date = ? ORDER")
-    params = (date_filter,)
+month_days = calendar.monthcalendar(self.calendar_year, self.calendar_month)
 ```
 
-ただしMVP規模なら現状でも許容範囲です。
+Python の `calendar` デフォルトは月曜始まり（`firstweekday=0`）で、`WEEKDAY_LABELS` も `("月", "火", ... "日")` になっているため整合しています。ただし、ロケール依存で変わる可能性があるため、明示的に `calendar.setfirstweekday(0)` するか `Calendar(firstweekday=0).monthcalendar(...)` を使う方が安全です。
 
 ---
 
-### I-3. `daily_totals` / `fetch_daily_totals` がUIから未使用
+### I-4. SPEC.md のテスト方針に「2〜3件」とあるが12件に増加
 
-**ファイル**: [db.py](file:///Users/admin/Desktop/wk/kk/app/db.py) L114-128, [service.py](file:///Users/admin/Desktop/wk/kk/app/service.py) L106-119
+**ファイル**: SPEC.md L152-153
 
-SPEC に「カレンダー表示」があり、テストも存在しますが、`ui.py` からは呼ばれていません。カレンダー機能が未実装の状態でメソッドだけ先に作られています。README には「月カレンダー表示」と記載されているため、**README と実装に乖離**があります。
+```
+- 自動テスト（可能なら）
+  - `service.py` の集計関数ユニットテスト 2〜3件
+```
 
----
-
-### I-4. `list_entries(date_filter=...)` がUIから未使用
-
-**ファイル**: [service.py](file:///Users/admin/Desktop/wk/kk/app/service.py) L84-85
-
-同様に `date_filter` 機能はテストされていますが、UIからは呼ばれていません。
-
----
-
-### I-5. テストカバレッジがService層に偏っている
-
-**ファイル**: [test_service.py](file:///Users/admin/Desktop/wk/kk/tests/test_service.py)
-
-5テストに増加（前回3件）しましたが、すべてService層のみです。追加すべきテスト：
-- 日付バリデーション（不正形式）
-- メモ文字数上限（101文字）
-- カテゴリ/区分バリデーション
-- DB層の `delete_entry` （存在しないID）
-
----
-
-### I-6. `activebackground` 等のハードコード色が `constants.py` に未定義
-
-**ファイル**: [ui.py](file:///Users/admin/Desktop/wk/kk/app/ui.py) L217, L277, L323 等
-
-`"#2F8A4C"`, `"#B33030"`, `"#49598A"`, `"#FFFFF0"`, `"#FDECEA"`, `"#E8F5E9"`, `"#B3D4FC"` 等がハードコードされています。`constants.py` に色定数を集約した設計方針と一貫させるなら、これらも定数化するのが良いでしょう。
-
----
-
-## 📝 Note（軽微 / 参考情報）
-
-### N-1. `run.py` のエントリーポイント分離は良い設計
-
-`run.py` → `app.main.main()` の構成で、PyInstaller ビルドと開発時実行を統一できています。`--noconsole` オプションも追加されており、exe起動時の黒窓が出ない設計になっています。
-
----
-
-### N-2. `main.py` の Tkinter 可用性チェック
-
-[main.py](file:///Users/admin/Desktop/wk/kk/app/main.py) L26-31 で Tkinter のインポートを `try/except` で包み、ない環境では親切なメッセージを表示しています。良い改善です。
-
----
-
-### N-3. `.gitignore` に `__pycache__/` があるが、ルートに `__pycache__/` ディレクトリが存在
-
-ルートに `__pycache__/` が残っています。`git clean` で除去するか確認してください。
+実際には12件のテストが実装されています。SPEC.md を実態に合わせて更新するのが良いでしょう。
 
 ---
 
@@ -189,16 +161,20 @@ SPEC に「カレンダー表示」があり、テストも存在しますが、
 
 | 項目 | 評価 |
 |------|------|
-| **レイヤー分離** | DB → Service → UI が明確 |
-| **仕様準拠** | SPEC.md のMVPスコープをほぼカバー |
-| **エントリーポイント** | `run.py` で統一、`--noconsole` 対応 |
-| **パス解決** | `resolve_app_base_dir()` で frozen 対応 |
-| **CSV** | `utf-8-sig` BOM付き（Excel対応）|
-| **バリデーション** | 具体的な日本語エラーメッセージ |
-| **UI配色** | 暖色系背景、収入/支出色分け、大フォント |
-| **単一選択** | `selectmode="browse"` でバグ防止 |
-| **テスト** | 5件に増加、`daily_totals` もカバー |
-| **Tkチェック** | Tk不在環境でのフォールバック対応 |
+| **レイヤー分離** | DB → Service → UI が明確で、テストしやすい |
+| **仕様準拠** | SPEC.md の全機能（カレンダー含む）を実装 |
+| **2カラムレイアウト** | 左カレンダー / 右入力+明細+サマリの直感的レイアウト |
+| **全角数字対応** | `_FULLWIDTH_TRANSLATION` で自然な変換 |
+| **日付バリデーション** | 正規表現 + `fromisoformat()` の二重チェック |
+| **DB ロールバック** | `connect()` で例外時に明示的 `rollback()` |
+| **例外の絞り込み** | `sqlite3.Error, OSError` に限定（デバッグしやすい）|
+| **Tkinter 可用性チェック** | `main.py` で `ModuleNotFoundError` / `TclError` 対応 |
+| **エントリーポイント** | `run.py` で開発/ビルドを統一 |
+| **テスト充実** | 12件（バリデーション全パターン + ロールバック + 日次集計）|
+| **色定数集約** | 全色が `constants.py` に定義、ハードコードなし |
+| **CI** | テスト実行 → ビルド → アップロードの完全ワークフロー |
+| **CSV** | `utf-8-sig` BOM付き、日本語ヘッダー |
+| **README** | トラブルシュート含む実用的なドキュメント |
 
 ---
 
@@ -206,14 +182,25 @@ SPEC に「カレンダー表示」があり、テストも存在しますが、
 
 | # | 重要度 | 内容 | ファイル |
 |---|--------|------|---------|
-| C-1 | 🔴 Critical | 例外時のロールバック欠如 | `db.py` |
-| W-1 | 🟡 Warning | 全角数字でクラッシュ | `service.py` |
-| W-2 | 🟡 Warning | 不正日付のバリデーション | `service.py` |
-| W-3 | 🟡 Warning | 未使用インポート `SMALL_FONT` | `ui.py` |
-| I-1 | 🔵 Improve | `create_entry` の戻り値型不整合 | `service.py` |
-| I-2 | 🔵 Improve | SQLが2パターンに重複 | `db.py` |
-| I-3 | 🔵 Improve | `daily_totals` がUI未使用（README乖離）| `db.py`, `service.py` |
-| I-4 | 🔵 Improve | `date_filter` がUI未使用 | `service.py` |
-| I-5 | 🔵 Improve | テストがService層のみ | `test_service.py` |
-| I-6 | 🔵 Improve | UI色のハードコード | `ui.py` |
-| N-3 | 📝 Note | ルートに `__pycache__/` 残存 | プロジェクトルート |
+| W-1 | 🟡 Warning | `disabledforeground` 未設定 | `ui.py` |
+| W-2 | 🟡 Warning | `_show_error_dialog` の root リーク | `main.py` |
+| W-3 | 🟡 Warning | `on_delete` に DB エラーキャッチなし | `ui.py` |
+| I-1 | 🔵 Improve | SPEC.md に `run.py` / `tests/` 未記載 | `SPEC.md` |
+| I-2 | 🔵 Improve | カレンダー選択時に `refresh_summary` 未呼出 | `ui.py` |
+| I-3 | 🔵 Improve | `calendar.firstweekday` 未明示 | `ui.py` |
+| I-4 | 🔵 Improve | SPEC.md のテスト件数が実態と乖離 | `SPEC.md` |
+
+**🔴 Critical: 0件** — 前回の Critical 指摘はすべて解消されています。
+
+---
+
+## 総合評価
+
+前回レビューの **全11件の指摘が対応済み** です。特に以下が大きな改善です：
+
+- 全角数字変換（`_FULLWIDTH_TRANSLATION`）は高齢者向けとして秀逸
+- `date.fromisoformat()` + 正規表現の二重バリデーションは堅牢
+- ロールバックテスト（`test_connect_rolls_back_on_error`）でDB整合性を検証
+- 2カラムレイアウトでカレンダーと入力が同時に見える
+
+残りの指摘は Warning/Improvement のみで、**MVPとしては十分な品質**です。

@@ -102,12 +102,15 @@ CREATE TABLE IF NOT EXISTS entries (
 ### 8.1 ディレクトリ構成（想定）
 ```text
 .
+├─ run.py
 ├─ app/
 │  ├─ main.py
 │  ├─ ui.py
 │  ├─ db.py
 │  ├─ service.py
 │  └─ constants.py
+├─ tests/
+│  └─ test_service.py
 ├─ data/                 # 実行時作成
 ├─ requirements.txt
 ├─ README.md
@@ -150,7 +153,7 @@ CREATE TABLE IF NOT EXISTS entries (
   - 月次合計が正しい
   - CSV出力できる
 - 自動テスト（可能なら）
-  - `service.py` の集計関数ユニットテスト 2〜3件
+  - バリデーション/集計/ロールバックを含むユニットテスト（10件以上、現行13件）
 
 ## 11. 完了条件（受け入れ基準）
 - Windowsで `kakeibo.exe` が起動する

@@ -18,13 +18,19 @@ def _show_error_dialog(message: str) -> None:
         print(message)
         return
 
+    root = None
     try:
         root = tk.Tk()
         root.withdraw()
         messagebox.showerror("エラー", message)
-        root.destroy()
     except tk.TclError:
         print(message)
+    finally:
+        if root is not None:
+            try:
+                root.destroy()
+            except tk.TclError:
+                pass
 
 
 def main() -> int:

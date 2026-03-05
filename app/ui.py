@@ -576,7 +576,10 @@ class KakeiboApp:
 
         month_key = f"{self.calendar_year:04d}-{self.calendar_month:02d}"
         totals = self.service.daily_totals(self.calendar_year, self.calendar_month)
-        month_days = calendar.monthcalendar(self.calendar_year, self.calendar_month)
+        month_days = calendar.Calendar(firstweekday=0).monthdayscalendar(
+            self.calendar_year,
+            self.calendar_month,
+        )
         flat_days = [day for week in month_days for day in week]
         while len(flat_days) < len(self.calendar_buttons):
             flat_days.append(0)
@@ -591,6 +594,7 @@ class KakeiboApp:
                     command=lambda: None,
                     bg=COLOR_CALENDAR_EMPTY_BG,
                     fg=COLOR_TEXT_PRIMARY,
+                    disabledforeground=COLOR_TEXT_PRIMARY,
                 )
                 continue
 
@@ -653,18 +657,17 @@ class KakeiboApp:
     def on_select_calendar_date(self, date_text: str) -> None:
         self.selected_date_filter = date_text
         self.date_var.set(date_text)
-        self.refresh_calendar()
-        self.refresh_entries()
+        self.refresh_all()
         self._set_status(f"{date_text} の明細を表示しています")
 
     def on_clear_date_filter(self) -> None:
         self.selected_date_filter = None
-        self.refresh_calendar()
-        self.refresh_entries()
+        self.refresh_all()
         self._set_status("全期間の明細を表示しています")
 
     def on_add(self) -> None:
         input_date = self.date_var.get()
+        previous_filter = self.selected_date_filter
         try:
             self.service.create_entry(
                 date_text=input_date,
@@ -688,9 +691,14 @@ class KakeiboApp:
             created_date = created.strftime(DATE_FORMAT)
             self.calendar_year = created.year
             self.calendar_month = created.month
-            self.selected_date_filter = created_date
+            # 日付絞り込み中のみ、追加後も同じ挙動を維持する。
+            # 全期間表示中は勝手に日付フィルタへ切り替えない。
+            if previous_filter is not None:
+                self.selected_date_filter = created_date
+            else:
+                self.selected_date_filter = None
         except ValueError:
-            self.selected_date_filter = None
+            self.selected_date_filter = previous_filter
 
         self.amount_var.set("")
         self.memo_var.set("")
@@ -707,7 +715,15 @@ class KakeiboApp:
             return
 
         entry_id = int(selected[0])
-        if not self.service.delete_entry(entry_id):
+        try:
+            deleted = self.service.delete_entry(entry_id)
+        except (sqlite3.Error, OSError):
+            message = "削除に失敗しました"
+            self._set_status(message, is_error=True)
+            messagebox.showerror("エラー", message)
+            return
+
+        if not deleted:
             self._set_status("削除対象が見つかりませんでした", is_error=True)
             return
 
