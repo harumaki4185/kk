@@ -105,6 +105,8 @@ except ImportError:  # pragma: no cover
 
 
 WEEKDAY_LABELS = ("月", "火", "水", "木", "金", "土", "日")
+VIEW_CALENDAR = "calendar"
+VIEW_LIST = "list"
 
 
 class KakeiboApp:
@@ -116,10 +118,11 @@ class KakeiboApp:
         self.calendar_year = today.year
         self.calendar_month = today.month
         self.selected_date_filter: str | None = None
+        self.current_view = VIEW_CALENDAR
 
         self.root.title(APP_TITLE)
-        self.root.geometry("1400x900")
-        self.root.minsize(1200, 780)
+        self.root.geometry("1450x920")
+        self.root.minsize(1240, 820)
         self.root.configure(bg=BG_MAIN, padx=20, pady=20)
 
         self.date_var = tk.StringVar(value=today.strftime(DATE_FORMAT))
@@ -129,7 +132,7 @@ class KakeiboApp:
         self.memo_var = tk.StringVar(value="")
         self.status_var = tk.StringVar(value="")
         self.calendar_title_var = tk.StringVar(value="")
-        self.list_title_var = tk.StringVar(value="明細一覧（全期間）")
+        self.list_title_var = tk.StringVar(value="明細一覧")
 
         self.income_var = tk.StringVar(value="収入合計: 0 円")
         self.expense_var = tk.StringVar(value="支出合計: 0 円")
@@ -140,6 +143,7 @@ class KakeiboApp:
         self._configure_style()
         self._build_layout()
         self.refresh_all()
+        self.show_view(VIEW_CALENDAR)
         self._set_status("準備できました。入力してみてください。")
 
     def _configure_style(self) -> None:
@@ -161,128 +165,62 @@ class KakeiboApp:
         style.configure("TCombobox", padding=6)
 
     def _build_layout(self) -> None:
-        # Two-column layout: calendar (left) | input+list+summary (right)
-        self.root.columnconfigure(0, weight=0)  # calendar column - fixed
-        self.root.columnconfigure(1, weight=1)  # right column - expandable
-        self.root.rowconfigure(0, weight=1)      # main content row
+        self.root.columnconfigure(0, weight=3, minsize=760)
+        self.root.columnconfigure(1, weight=2, minsize=520)
+        self.root.rowconfigure(0, weight=1)
 
-        # --- Left column: Calendar ---
-        self._build_calendar_frame()
-
-        # --- Right column: stacked frames ---
-        right_frame = tk.Frame(self.root, bg=BG_MAIN)
-        right_frame.grid(row=0, column=1, sticky="nsew", padx=(14, 0))
-        right_frame.columnconfigure(0, weight=1)
-        right_frame.rowconfigure(1, weight=1)  # list frame expands
-        self.right_frame = right_frame
-
-        self._build_input_frame()
-        self._build_list_frame()
-        self._build_summary_frame()
+        self._build_left_panel()
+        self._build_right_panel()
         self._build_status_bar()
 
-    def _build_input_frame(self) -> None:
-        frame = tk.LabelFrame(
-            self.right_frame,
-            text="入力フォーム",
+    def _build_left_panel(self) -> None:
+        left_panel = tk.Frame(self.root, bg=BG_MAIN)
+        left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 14))
+        left_panel.columnconfigure(0, weight=1)
+        left_panel.rowconfigure(1, weight=1)
+
+        switch_frame = tk.Frame(left_panel, bg=BG_MAIN)
+        switch_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        switch_frame.columnconfigure(0, weight=1)
+        switch_frame.columnconfigure(1, weight=1)
+
+        self.calendar_view_btn = tk.Button(
+            switch_frame,
+            text="カレンダー",
             font=HEADING_FONT,
-            bg=BG_FRAME,
-            padx=18,
-            pady=14,
-        )
-        frame.grid(row=0, column=0, sticky="ew", pady=(0, 14))
-        frame.columnconfigure(5, weight=1)
-
-        tk.Label(frame, text="日付", font=BASE_FONT, bg=BG_FRAME).grid(
-            row=0, column=0, sticky="w", padx=(0, 8), pady=4
-        )
-        tk.Entry(
-            frame,
-            textvariable=self.date_var,
-            font=BASE_FONT,
-            width=13,
-            bg=BG_INPUT,
-            relief="solid",
-            bd=1,
-        ).grid(row=0, column=1, sticky="w", pady=4)
-
-        tk.Label(frame, text="区分", font=BASE_FONT, bg=BG_FRAME).grid(
-            row=0, column=2, sticky="w", padx=(24, 8), pady=4
-        )
-        type_frame = tk.Frame(frame, bg=BG_FRAME)
-        type_frame.grid(row=0, column=3, sticky="w", pady=4)
-        for value, label in ENTRY_TYPES:
-            color = COLOR_EXPENSE if value == ENTRY_TYPE_EXPENSE else COLOR_INCOME
-            tk.Radiobutton(
-                type_frame,
-                text=label,
-                variable=self.type_var,
-                value=value,
-                font=HEADING_FONT,
-                fg=color,
-                bg=BG_FRAME,
-                activebackground=BG_FRAME,
-                selectcolor=BG_FRAME,
-                indicatoron=True,
-            ).pack(side="left", padx=(0, 16))
-
-        tk.Label(frame, text="カテゴリ", font=BASE_FONT, bg=BG_FRAME).grid(
-            row=1, column=0, sticky="w", padx=(0, 8), pady=8
-        )
-        ttk.Combobox(
-            frame,
-            textvariable=self.category_var,
-            values=CATEGORIES,
-            state="readonly",
-            font=BASE_FONT,
-            width=10,
-        ).grid(row=1, column=1, sticky="w", pady=8)
-
-        tk.Label(frame, text="金額（円）", font=BASE_FONT, bg=BG_FRAME).grid(
-            row=1, column=2, sticky="w", padx=(24, 8), pady=8
-        )
-        tk.Entry(
-            frame,
-            textvariable=self.amount_var,
-            font=AMOUNT_FONT,
-            width=12,
-            bg=BG_SOFT_YELLOW,
-            relief="solid",
-            bd=2,
-            fg=COLOR_TEXT_PRIMARY,
-        ).grid(row=1, column=3, sticky="w", pady=8)
-
-        tk.Label(frame, text="メモ", font=BASE_FONT, bg=BG_FRAME).grid(
-            row=2, column=0, sticky="w", padx=(0, 8), pady=8
-        )
-        tk.Entry(
-            frame,
-            textvariable=self.memo_var,
-            font=BASE_FONT,
-            width=38,
-            bg=BG_INPUT,
-            relief="solid",
-            bd=1,
-        ).grid(row=2, column=1, columnspan=3, sticky="ew", pady=8)
-
-        tk.Button(
-            frame,
-            text="追加する",
-            font=BUTTON_FONT,
-            bg=COLOR_ADD_BTN,
-            fg=COLOR_ADD_BTN_FG,
-            activebackground=COLOR_ADD_BTN_ACTIVE,
-            activeforeground=COLOR_ADD_BTN_FG,
-            relief="raised",
-            bd=2,
-            width=10,
+            bg=COLOR_CSV_BTN,
+            fg=COLOR_CSV_BTN_FG,
+            activebackground=COLOR_CSV_BTN_ACTIVE,
+            activeforeground=COLOR_CSV_BTN_FG,
             cursor="hand2",
-            command=self.on_add,
-        ).grid(row=0, column=4, rowspan=3, padx=(20, 0), sticky="ns")
+            command=lambda: self.show_view(VIEW_CALENDAR),
+        )
+        self.calendar_view_btn.grid(row=0, column=0, sticky="ew", padx=(0, 6))
 
-    def _build_calendar_frame(self) -> None:
+        self.list_view_btn = tk.Button(
+            switch_frame,
+            text="明細一覧",
+            font=HEADING_FONT,
+            bg=BG_INPUT,
+            fg=COLOR_TEXT_PRIMARY,
+            activebackground=COLOR_TREE_SELECTED_BG,
+            activeforeground=COLOR_TEXT_PRIMARY,
+            cursor="hand2",
+            command=lambda: self.show_view(VIEW_LIST),
+        )
+        self.list_view_btn.grid(row=0, column=1, sticky="ew", padx=(6, 0))
+
+        self.left_content = tk.Frame(left_panel, bg=BG_MAIN)
+        self.left_content.grid(row=1, column=0, sticky="nsew")
+        self.left_content.rowconfigure(0, weight=1)
+        self.left_content.columnconfigure(0, weight=1)
+
+        self._build_calendar_page()
+        self._build_list_page()
+
+    def _build_calendar_page(self) -> None:
         frame = tk.LabelFrame(
-            self.root,
+            self.left_content,
             text="カレンダー（日別収支）",
             font=HEADING_FONT,
             bg=BG_FRAME,
@@ -291,7 +229,8 @@ class KakeiboApp:
         )
         frame.grid(row=0, column=0, sticky="nsew")
         frame.columnconfigure(0, weight=1)
-        frame.rowconfigure(2, weight=1)  # calendar grid expands vertically
+        frame.rowconfigure(2, weight=1)
+        self.calendar_page = frame
 
         header_frame = tk.Frame(frame, bg=BG_FRAME)
         header_frame.grid(row=0, column=0, sticky="ew", pady=(0, 8))
@@ -331,7 +270,7 @@ class KakeiboApp:
 
         tk.Button(
             header_frame,
-            text="全期間表示",
+            text="選択解除",
             font=SMALL_FONT,
             bg=BG_INPUT,
             fg=COLOR_TEXT_PRIMARY,
@@ -368,8 +307,8 @@ class KakeiboApp:
                     self.calendar_grid_frame,
                     text="",
                     font=SMALL_FONT,
-                    width=8,
-                    height=2,
+                    width=9,
+                    height=3,
                     justify="center",
                     relief="groove",
                     bg=COLOR_CALENDAR_CELL_BG,
@@ -381,26 +320,43 @@ class KakeiboApp:
                 button.grid(row=row, column=col, padx=2, pady=2, sticky="nsew")
                 self.calendar_buttons.append(button)
 
-    def _build_list_frame(self) -> None:
+    def _build_list_page(self) -> None:
         frame = tk.LabelFrame(
-            self.right_frame,
+            self.left_content,
             text="明細一覧",
             font=HEADING_FONT,
             bg=BG_FRAME,
             padx=14,
             pady=10,
         )
-        frame.grid(row=1, column=0, sticky="nsew", pady=(0, 14))
+        frame.grid(row=0, column=0, sticky="nsew")
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(1, weight=1)
+        self.list_page = frame
+
+        header = tk.Frame(frame, bg=BG_FRAME)
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        header.columnconfigure(0, weight=1)
 
         tk.Label(
-            frame,
+            header,
             textvariable=self.list_title_var,
             font=BASE_FONT,
             bg=BG_FRAME,
             fg=COLOR_TEXT_PRIMARY,
-        ).grid(row=0, column=0, sticky="w", pady=(0, 8))
+        ).grid(row=0, column=0, sticky="w")
+
+        tk.Button(
+            header,
+            text="月全体表示",
+            font=SMALL_FONT,
+            bg=BG_INPUT,
+            fg=COLOR_TEXT_PRIMARY,
+            activebackground=COLOR_TREE_SELECTED_BG,
+            activeforeground=COLOR_TEXT_PRIMARY,
+            cursor="hand2",
+            command=self.on_clear_date_filter,
+        ).grid(row=0, column=1, sticky="e")
 
         columns = ("date", "type", "category", "amount", "memo")
         self.tree = ttk.Treeview(
@@ -420,8 +376,8 @@ class KakeiboApp:
         self.tree.column("date", width=140, anchor="center")
         self.tree.column("type", width=100, anchor="center")
         self.tree.column("category", width=130, anchor="center")
-        self.tree.column("amount", width=150, anchor="e")
-        self.tree.column("memo", width=400, anchor="w")
+        self.tree.column("amount", width=160, anchor="e")
+        self.tree.column("memo", width=560, anchor="w")
 
         self.tree.tag_configure("income", background=COLOR_INCOME_BG, foreground=COLOR_INCOME)
         self.tree.tag_configure("expense", background=COLOR_EXPENSE_BG, foreground=COLOR_EXPENSE)
@@ -431,7 +387,7 @@ class KakeiboApp:
         scrollbar.grid(row=1, column=1, sticky="ns")
 
         action_frame = tk.Frame(frame, bg=BG_FRAME)
-        action_frame.grid(row=2, column=0, sticky="e", pady=(12, 0))
+        action_frame.grid(row=2, column=0, sticky="e", pady=(10, 0))
         tk.Button(
             action_frame,
             text="選択行を削除",
@@ -446,17 +402,128 @@ class KakeiboApp:
             command=self.on_delete,
         ).pack(side="left")
 
+    def _build_right_panel(self) -> None:
+        right_panel = tk.Frame(self.root, bg=BG_MAIN)
+        right_panel.grid(row=0, column=1, sticky="nsew")
+        right_panel.columnconfigure(0, weight=1)
+        right_panel.rowconfigure(0, weight=3)
+        right_panel.rowconfigure(1, weight=2)
+        self.right_panel = right_panel
+
+        self._build_input_frame()
+        self._build_summary_frame()
+
+    def _build_input_frame(self) -> None:
+        frame = tk.LabelFrame(
+            self.right_panel,
+            text="入力フォーム",
+            font=HEADING_FONT,
+            bg=BG_FRAME,
+            padx=18,
+            pady=14,
+        )
+        frame.grid(row=0, column=0, sticky="nsew", pady=(0, 14))
+        frame.columnconfigure(1, weight=1)
+        frame.columnconfigure(3, weight=1)
+
+        tk.Label(frame, text="日付", font=BASE_FONT, bg=BG_FRAME).grid(
+            row=0, column=0, sticky="w", padx=(0, 8), pady=6
+        )
+        tk.Entry(
+            frame,
+            textvariable=self.date_var,
+            font=BASE_FONT,
+            width=13,
+            bg=BG_INPUT,
+            relief="solid",
+            bd=1,
+        ).grid(row=0, column=1, sticky="ew", pady=6)
+
+        tk.Label(frame, text="区分", font=BASE_FONT, bg=BG_FRAME).grid(
+            row=1, column=0, sticky="w", padx=(0, 8), pady=6
+        )
+        type_frame = tk.Frame(frame, bg=BG_FRAME)
+        type_frame.grid(row=1, column=1, sticky="w", pady=6)
+        for value, label in ENTRY_TYPES:
+            color = COLOR_EXPENSE if value == ENTRY_TYPE_EXPENSE else COLOR_INCOME
+            tk.Radiobutton(
+                type_frame,
+                text=label,
+                variable=self.type_var,
+                value=value,
+                font=HEADING_FONT,
+                fg=color,
+                bg=BG_FRAME,
+                activebackground=BG_FRAME,
+                selectcolor=BG_FRAME,
+                indicatoron=True,
+            ).pack(side="left", padx=(0, 16))
+
+        tk.Label(frame, text="カテゴリ", font=BASE_FONT, bg=BG_FRAME).grid(
+            row=2, column=0, sticky="w", padx=(0, 8), pady=6
+        )
+        ttk.Combobox(
+            frame,
+            textvariable=self.category_var,
+            values=CATEGORIES,
+            state="readonly",
+            font=BASE_FONT,
+            width=12,
+        ).grid(row=2, column=1, sticky="ew", pady=6)
+
+        tk.Label(frame, text="金額（円）", font=BASE_FONT, bg=BG_FRAME).grid(
+            row=3, column=0, sticky="w", padx=(0, 8), pady=6
+        )
+        tk.Entry(
+            frame,
+            textvariable=self.amount_var,
+            font=AMOUNT_FONT,
+            width=12,
+            bg=BG_SOFT_YELLOW,
+            relief="solid",
+            bd=2,
+            fg=COLOR_TEXT_PRIMARY,
+        ).grid(row=3, column=1, sticky="ew", pady=6)
+
+        tk.Label(frame, text="メモ", font=BASE_FONT, bg=BG_FRAME).grid(
+            row=4, column=0, sticky="w", padx=(0, 8), pady=6
+        )
+        tk.Entry(
+            frame,
+            textvariable=self.memo_var,
+            font=BASE_FONT,
+            bg=BG_INPUT,
+            relief="solid",
+            bd=1,
+        ).grid(row=4, column=1, columnspan=3, sticky="ew", pady=6)
+
+        tk.Button(
+            frame,
+            text="追加する",
+            font=BUTTON_FONT,
+            bg=COLOR_ADD_BTN,
+            fg=COLOR_ADD_BTN_FG,
+            activebackground=COLOR_ADD_BTN_ACTIVE,
+            activeforeground=COLOR_ADD_BTN_FG,
+            relief="raised",
+            bd=2,
+            width=10,
+            cursor="hand2",
+            command=self.on_add,
+        ).grid(row=5, column=0, columnspan=4, sticky="ew", pady=(14, 0))
+
     def _build_summary_frame(self) -> None:
         frame = tk.LabelFrame(
-            self.right_frame,
+            self.right_panel,
             text="月次サマリ",
             font=HEADING_FONT,
             bg=BG_FRAME,
             padx=18,
             pady=14,
         )
-        frame.grid(row=2, column=0, sticky="ew")
+        frame.grid(row=1, column=0, sticky="nsew")
         frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(2, weight=1)
 
         tk.Label(
             frame,
@@ -465,7 +532,7 @@ class KakeiboApp:
             bg=BG_FRAME,
             fg=COLOR_INCOME,
             anchor="w",
-        ).grid(row=0, column=0, sticky="w", pady=2)
+        ).grid(row=0, column=0, sticky="w", pady=4)
 
         tk.Label(
             frame,
@@ -474,7 +541,7 @@ class KakeiboApp:
             bg=BG_FRAME,
             fg=COLOR_EXPENSE,
             anchor="w",
-        ).grid(row=1, column=0, sticky="w", pady=2)
+        ).grid(row=1, column=0, sticky="w", pady=4)
 
         tk.Label(
             frame,
@@ -483,22 +550,36 @@ class KakeiboApp:
             bg=BG_FRAME,
             fg=COLOR_TEXT_PRIMARY,
             anchor="w",
-        ).grid(row=2, column=0, sticky="w", pady=(6, 2))
+        ).grid(row=2, column=0, sticky="w", pady=(8, 10))
+
+        action_frame = tk.Frame(frame, bg=BG_FRAME)
+        action_frame.grid(row=3, column=0, sticky="ew")
+        action_frame.columnconfigure(0, weight=1)
+        action_frame.columnconfigure(1, weight=1)
 
         tk.Button(
-            frame,
+            action_frame,
+            text="明細一覧を開く",
+            font=BASE_FONT,
+            bg=BG_INPUT,
+            fg=COLOR_TEXT_PRIMARY,
+            activebackground=COLOR_TREE_SELECTED_BG,
+            activeforeground=COLOR_TEXT_PRIMARY,
+            cursor="hand2",
+            command=lambda: self.show_view(VIEW_LIST),
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+
+        tk.Button(
+            action_frame,
             text="CSV出力",
-            font=BUTTON_FONT,
+            font=BASE_FONT,
             bg=COLOR_CSV_BTN,
             fg=COLOR_CSV_BTN_FG,
             activebackground=COLOR_CSV_BTN_ACTIVE,
             activeforeground=COLOR_CSV_BTN_FG,
-            relief="raised",
-            bd=2,
-            width=12,
             cursor="hand2",
             command=self.on_export_csv,
-        ).grid(row=0, column=1, rowspan=3, padx=(20, 0), sticky="ns")
+        ).grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
     def _build_status_bar(self) -> None:
         self.status_label = tk.Label(
@@ -534,15 +615,49 @@ class KakeiboApp:
         next_month = month_index % 12 + 1
         return next_year, next_month
 
+    def _month_key(self) -> str:
+        return f"{self.calendar_year:04d}-{self.calendar_month:02d}"
+
+    def _update_view_buttons(self) -> None:
+        if self.current_view == VIEW_CALENDAR:
+            self.calendar_view_btn.configure(
+                bg=COLOR_CSV_BTN,
+                fg=COLOR_CSV_BTN_FG,
+                relief="sunken",
+            )
+            self.list_view_btn.configure(
+                bg=BG_INPUT,
+                fg=COLOR_TEXT_PRIMARY,
+                relief="raised",
+            )
+        else:
+            self.calendar_view_btn.configure(
+                bg=BG_INPUT,
+                fg=COLOR_TEXT_PRIMARY,
+                relief="raised",
+            )
+            self.list_view_btn.configure(
+                bg=COLOR_CSV_BTN,
+                fg=COLOR_CSV_BTN_FG,
+                relief="sunken",
+            )
+
+    def show_view(self, view_name: str) -> None:
+        self.current_view = view_name
+        if view_name == VIEW_CALENDAR:
+            self.calendar_page.tkraise()
+        else:
+            self.list_page.tkraise()
+            self.refresh_entries()
+        self._update_view_buttons()
+
     def _change_month(self, diff: int) -> None:
         self.calendar_year, self.calendar_month = self._change_year_month(
             self.calendar_year,
             self.calendar_month,
             diff,
         )
-        if self.selected_date_filter and not self.selected_date_filter.startswith(
-            f"{self.calendar_year:04d}-{self.calendar_month:02d}"
-        ):
+        if self.selected_date_filter and not self.selected_date_filter.startswith(self._month_key()):
             self.selected_date_filter = None
         self.refresh_all()
         self._set_status(f"{self._month_title(self.calendar_year, self.calendar_month)}を表示しています")
@@ -574,7 +689,7 @@ class KakeiboApp:
     def refresh_calendar(self) -> None:
         self.calendar_title_var.set(self._month_title(self.calendar_year, self.calendar_month))
 
-        month_key = f"{self.calendar_year:04d}-{self.calendar_month:02d}"
+        month_key = self._month_key()
         totals = self.service.daily_totals(self.calendar_year, self.calendar_month)
         month_days = calendar.Calendar(firstweekday=0).monthdayscalendar(
             self.calendar_year,
@@ -632,10 +747,13 @@ class KakeiboApp:
 
         if self.selected_date_filter:
             self.list_title_var.set(f"明細一覧（{self.selected_date_filter}）")
+            rows = self.service.list_entries(date_filter=self.selected_date_filter)
         else:
-            self.list_title_var.set("明細一覧（全期間）")
+            month_key = self._month_key()
+            self.list_title_var.set(f"明細一覧（{month_key} 全件）")
+            rows = self.service.list_entries(year_month_filter=month_key)
 
-        for row in self.service.list_entries(date_filter=self.selected_date_filter):
+        for row in rows:
             label = "収入" if row["type"] == ENTRY_TYPE_INCOME else "支出"
             amount_text = self._format_amount(row["amount"], row["type"])
             tag = "income" if row["type"] == ENTRY_TYPE_INCOME else "expense"
@@ -655,15 +773,23 @@ class KakeiboApp:
         self.balance_var.set(f"{title} 収支: {summary['balance']:,} 円")
 
     def on_select_calendar_date(self, date_text: str) -> None:
+        if self.selected_date_filter == date_text:
+            self.selected_date_filter = None
+            self.refresh_calendar()
+            self._set_status("日付選択を解除しました")
+            return
+
         self.selected_date_filter = date_text
         self.date_var.set(date_text)
-        self.refresh_all()
+        self.refresh_calendar()
+        self.show_view(VIEW_LIST)
+        self.refresh_entries()
         self._set_status(f"{date_text} の明細を表示しています")
 
     def on_clear_date_filter(self) -> None:
         self.selected_date_filter = None
         self.refresh_all()
-        self._set_status("全期間の明細を表示しています")
+        self._set_status("日付選択を解除しました")
 
     def on_add(self) -> None:
         input_date = self.date_var.get()
@@ -691,8 +817,6 @@ class KakeiboApp:
             created_date = created.strftime(DATE_FORMAT)
             self.calendar_year = created.year
             self.calendar_month = created.month
-            # 日付絞り込み中のみ、追加後も同じ挙動を維持する。
-            # 全期間表示中は勝手に日付フィルタへ切り替えない。
             if previous_filter is not None:
                 self.selected_date_filter = created_date
             else:

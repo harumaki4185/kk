@@ -72,15 +72,28 @@ class Database:
         with self.connect() as conn:
             conn.execute(query, (date_value, entry_type, category, amount, memo, created_at))
 
-    def fetch_entries(self, date_filter: str | None = None) -> list[dict]:
+    def fetch_entries(
+        self,
+        date_filter: str | None = None,
+        year_month_filter: str | None = None,
+    ) -> list[dict]:
         query = """
         SELECT id, date, type, category, amount, memo, created_at
         FROM entries
         """
-        params: tuple[str, ...] = ()
+        where_clauses: list[str] = []
+        params_list: list[str] = []
         if date_filter:
-            query += "WHERE date = ?\n"
-            params = (date_filter,)
+            where_clauses.append("date = ?")
+            params_list.append(date_filter)
+        if year_month_filter:
+            where_clauses.append("substr(date, 1, 7) = ?")
+            params_list.append(year_month_filter)
+
+        if where_clauses:
+            query += "WHERE " + " AND ".join(where_clauses) + "\n"
+
+        params = tuple(params_list)
         query += "ORDER BY date DESC, id DESC;"
 
         with self.connect() as conn:

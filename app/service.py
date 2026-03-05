@@ -92,8 +92,15 @@ class KakeiboService:
         memo_value = validate_memo(memo)
         self.database.insert_entry(date_value, type_value, category_value, amount_value, memo_value)
 
-    def list_entries(self, date_filter: str | None = None) -> list[dict]:
-        return self.database.fetch_entries(date_filter=date_filter)
+    def list_entries(
+        self,
+        date_filter: str | None = None,
+        year_month_filter: str | None = None,
+    ) -> list[dict]:
+        return self.database.fetch_entries(
+            date_filter=date_filter,
+            year_month_filter=year_month_filter,
+        )
 
     def delete_entry(self, entry_id: int) -> bool:
         return self.database.delete_entry(entry_id)
